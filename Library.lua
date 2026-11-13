@@ -405,8 +405,8 @@ function library:_init()
 	create_divider(logo_area, _new_udim2(0, 0, 1, -1), _new_udim2(1, 0, 0, 1))
 
 	local pin = create_new('Frame', {
-		Position = _new_udim2(0, 10, 0, 0),
-		Size = _new_udim2(0, 3, 0, 14),
+		Position = _new_udim2(0, 14, 0, 0),
+		Size = _new_udim2(0, 2, 0, 12),
 		BorderSizePixel = 0,
 		ZIndex = 50,
 		Parent = sidebar,
@@ -619,9 +619,9 @@ function library:_move_pin()
 	local button = self._active_tab._button
 	local target = _new_udim2(
 		0,
-		10,
+		14,
 		0,
-		(button.AbsolutePosition.Y - self._sidebar.AbsolutePosition.Y + button.AbsoluteSize.Y / 2) / self._ui_scale - 7
+		(button.AbsolutePosition.Y - self._sidebar.AbsolutePosition.Y + button.AbsoluteSize.Y / 2) / self._ui_scale - 6
 	)
 
 	_create_tween(
@@ -773,20 +773,48 @@ function library:create_tab(title, icon, order, category_name)
 
 	manager._data = data
 	_insert(runtime._tabs, data)
+	data._index = #runtime._tabs
 
 	if first then
 		runtime._active_tab = data
 		runtime:update_tabs(data)
-		runtime:update_sections(left, right)
+		runtime:update_sections(left, right, 1)
 	end
 
 	button.MouseButton1Click:Connect(function()
 		if not data._enabled then
 			return
 		end
+
+		local direction = 1
+		if runtime._active_tab and data._index < runtime._active_tab._index then
+			direction = -1
+		end
+
 		runtime._active_tab = data
 		runtime:update_tabs(data)
-		runtime:update_sections(left, right)
+		runtime:update_sections(left, right, direction)
+	end)
+
+	button.MouseEnter:Connect(function()
+		if data._active then
+			return
+		end
+
+		button.BackgroundColor3 = theme.color('surface')
+		_create_tween(tween_service, button, _new_tween_info(0.2), {
+			BackgroundTransparency = 0.35,
+		}):Play()
+	end)
+
+	button.MouseLeave:Connect(function()
+		if data._active then
+			return
+		end
+
+		_create_tween(tween_service, button, _new_tween_info(0.2), {
+			BackgroundTransparency = 1,
+		}):Play()
 	end)
 
 	function manager:set_enabled(state)
@@ -801,7 +829,7 @@ function library:create_tab(title, icon, order, category_name)
 				if candidate ~= data and candidate._enabled then
 					runtime._active_tab = candidate
 					runtime:update_tabs(candidate)
-					runtime:update_sections(candidate._left, candidate._right)
+					runtime:update_sections(candidate._left, candidate._right, 1)
 					break
 				end
 			end
@@ -884,22 +912,18 @@ end
 function library:update_tabs(tab)
 	for _, data in self._tabs do
 		local active = data == tab
-		if active then
-			data._active = true
-		elseif data._active then
-			data._active = false
-		end
+		data._active = active
 
 		_create_tween(tween_service, data._button, _new_tween_info(0.35, Enum.EasingStyle.Quint), {
 			BackgroundTransparency = active and 0 or 1,
 		}):Play()
 
+		theme.paint(data._button, 'BackgroundColor3', 'surface_alt')
 		theme.paint(data._label, 'TextColor3', active and 'text' or 'text_dim')
 		theme.paint(data._icon, 'ImageColor3', active and 'text' or 'text_dim')
 	end
 
 	if tab then
-		theme.paint(tab._button, 'BackgroundColor3', 'surface_alt')
 		self._pin.BackgroundTransparency = 0
 		self:_move_pin()
 		_defer(function()
@@ -908,7 +932,9 @@ function library:update_tabs(tab)
 	end
 end
 
-function library:update_sections(left, right)
+function library:update_sections(left, right, direction)
+	local offset = direction == -1 and -16 or 16
+
 	for _, object in self._sections:GetChildren() do
 		if object ~= left and object ~= right and object.Visible then
 			object.Visible = false
@@ -921,7 +947,7 @@ function library:update_sections(left, right)
 
 			if not column.Visible then
 				column.Visible = true
-				column.Position = _new_udim2(0, base + 12, 0, 0)
+				column.Position = _new_udim2(0, base, 0, offset)
 			end
 
 			_create_tween(
