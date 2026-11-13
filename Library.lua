@@ -933,7 +933,7 @@ function library:create_tab(title, icon, order, category_name)
 		create_round(frame, 8)
 		create_outline(frame, true)
 		create_padding(frame, 12, 12, 12, 12)
-		create_list(frame, 8)
+		create_list(frame, 10)
 
 		create_label({
 			LayoutOrder = 0,
@@ -1279,7 +1279,7 @@ local function create_switch(parent, order, values, runtime)
 	local row = create_new('Frame', {
 		BackgroundTransparency = 1,
 		LayoutOrder = order,
-		Size = _new_udim2(1, 0, 0, ROW_HEIGHT),
+		Size = _new_udim2(1, 0, 0, 26),
 		Parent = parent,
 	})
 
@@ -1398,7 +1398,7 @@ local function create_slider(parent, order, values, runtime)
 	local row = create_new('Frame', {
 		BackgroundTransparency = 1,
 		LayoutOrder = order,
-		Size = _new_udim2(1, 0, 0, 30),
+		Size = _new_udim2(1, 0, 0, 34),
 		Parent = parent,
 	})
 
@@ -1424,13 +1424,15 @@ local function create_slider(parent, order, values, runtime)
 
 	local track_button = create_new('TextButton', {
 		BackgroundTransparency = 1,
-		Position = _new_udim2(0, 0, 0, 16),
-		Size = _new_udim2(1, 0, 1, -16),
+		Position = _new_udim2(0, 0, 0, 18),
+		Size = _new_udim2(1, 0, 1, -18),
 		Text = '',
 		AutoButtonColor = false,
 		BorderSizePixel = 0,
 		Parent = row,
 	})
+
+	create_padding(track_button, 0, 0, 6, 6)
 
 	local track = create_new('Frame', {
 		AnchorPoint = _new_vector2(0, 0.5),
@@ -1591,7 +1593,7 @@ local function create_dropdown(parent, order, values, runtime)
 		Parent = parent,
 	})
 
-	create_list(container, 4)
+	create_list(container, 6)
 
 	create_label({
 		LayoutOrder = 0,
@@ -1619,7 +1621,7 @@ local function create_dropdown(parent, order, values, runtime)
 	local header = create_new('Frame', {
 		BackgroundTransparency = 1,
 		LayoutOrder = 0,
-		Size = _new_udim2(1, 0, 0, 24),
+		Size = _new_udim2(1, 0, 0, 26),
 		Parent = box,
 	})
 
@@ -1939,7 +1941,7 @@ local function create_button(parent, order, values, runtime)
 	local button = create_new('TextButton', {
 		BackgroundTransparency = 0,
 		LayoutOrder = order,
-		Size = _new_udim2(1, 0, 0, 26),
+		Size = _new_udim2(1, 0, 0, 28),
 		FontFace = FONT,
 		Text = values.title or 'Button',
 		TextSize = runtime._label_size,
@@ -1980,7 +1982,8 @@ local function create_textbox(parent, order, values, runtime)
 	local frame = create_new('Frame', {
 		BackgroundTransparency = 1,
 		LayoutOrder = order,
-		Size = _new_udim2(1, 0, 0, height + 20),
+		Size = _new_udim2(1, 0, 0, height + 22),
+		ClipsDescendants = true,
 		Parent = parent,
 	})
 
@@ -1994,14 +1997,14 @@ local function create_textbox(parent, order, values, runtime)
 	})
 
 	local box = create_new('TextBox', {
-		Position = _new_udim2(0, 0, 0, 20),
+		Position = _new_udim2(0, 0, 0, 22),
 		Size = _new_udim2(1, 0, 0, height),
 		ClearTextOnFocus = false,
-		MultiLine = values.multi_line ~= false,
+		MultiLine = values.multi_line == true,
 		PlaceholderText = values.placeholder or '',
 		Text = raw,
 		TextSize = values.compact and runtime._label_size or runtime._small_size,
-		TextWrapped = false,
+		TextWrapped = values.multi_line == true,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextYAlignment = values.compact and Enum.TextYAlignment.Center or Enum.TextYAlignment.Top,
 		FontFace = FONT,
@@ -2081,7 +2084,7 @@ local function create_keybind(parent, order, values, runtime)
 	local row = create_new('Frame', {
 		BackgroundTransparency = 1,
 		LayoutOrder = order,
-		Size = _new_udim2(1, 0, 0, ROW_HEIGHT),
+		Size = _new_udim2(1, 0, 0, 26),
 		Parent = parent,
 	})
 
