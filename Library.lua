@@ -378,7 +378,7 @@ function library:_init()
 		Parent = gui,
 	})
 
-	create_padding(notification_holder, 32, 16, 16, 16)
+	create_padding(notification_holder, 8, 8, 12, 12)
 
 	local notification_layout = create_new('UIListLayout', {
 		FillDirection = Enum.FillDirection.Vertical,
@@ -1073,8 +1073,8 @@ function library:notify(message)
 		return
 	end
 
-	local width = runtime._is_mobile and 260 or 300
-	local height = 40
+	local width = runtime._is_mobile and 300 or 340
+	local height = 48
 
 	runtime._notification_order += 1
 
@@ -1093,8 +1093,8 @@ function library:notify(message)
 
 	local icon = create_new('Frame', {
 		AnchorPoint = _new_vector2(0, 0.5),
-		Position = _new_udim2(0, 12, 0.5, 0),
-		Size = _new_udim2(0, 16, 0, 16),
+		Position = _new_udim2(0, 14, 0.5, 0),
+		Size = _new_udim2(0, 20, 0, 20),
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 		ZIndex = 201,
@@ -1116,7 +1116,7 @@ function library:notify(message)
 		Size = _new_udim2(1, 0, 1, 0),
 		Text = 'i',
 		TextRole = 'text',
-		TextSize = runtime._small_size + 2,
+		TextSize = runtime._small_size + 3,
 		TextXAlignment = Enum.TextXAlignment.Center,
 		TextYAlignment = Enum.TextYAlignment.Center,
 		TextTransparency = 1,
@@ -1125,11 +1125,11 @@ function library:notify(message)
 	})
 
 	local label = create_label({
-		Position = _new_udim2(0, 38, 0, 0),
-		Size = _new_udim2(1, -50, 1, 0),
+		Position = _new_udim2(0, 44, 0, 0),
+		Size = _new_udim2(1, -58, 1, 0),
 		Text = text,
 		TextRole = 'text',
-		TextSize = runtime._label_size,
+		TextSize = runtime._label_size + 1,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextTruncate = Enum.TextTruncate.AtEnd,
 		TextTransparency = 1,
