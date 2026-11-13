@@ -73,6 +73,13 @@ local theme
 local save_manager
 
 local column_base = setmetatable({}, { __mode = 'k' })
+local connections = {}
+
+local function watch(signal, callback)
+	local connection = signal:Connect(callback)
+	_insert(connections, connection)
+	return connection
+end
 
 local function normalize_name(value)
 	local text = string.lower(_tostring(value or ''))
@@ -183,8 +190,8 @@ local create_scroller = LPH_NO_VIRTUALIZE(function(parent, position, size)
 		Size = size,
 		CanvasSize = _new_udim2(0, 0, 0, 0),
 		AutomaticCanvasSize = Enum.AutomaticSize.Y,
-		ScrollBarThickness = 0,
-		ScrollBarImageTransparency = 1,
+		ScrollBarThickness = 3,
+		ScrollBarImageTransparency = 0.6,
 		VerticalScrollBarInset = Enum.ScrollBarInset.None,
 		HorizontalScrollBarInset = Enum.ScrollBarInset.None,
 		BorderSizePixel = 0,
@@ -198,6 +205,7 @@ library = {
 	_flags = {},
 	_controls = {},
 	_dropdowns = {},
+	_custom_themes = {},
 	_current = nil,
 }
 
@@ -224,6 +232,7 @@ function library:_persist_state()
 		theme = theme.current(),
 		autosave = save_manager._autosave,
 		notify = library._current and library._current._notify_position or nil,
+		themes = library._custom_themes,
 	})
 end
 
@@ -233,6 +242,7 @@ function library:_save()
 		return
 	end
 	save_manager.save(save_manager._active, true)
+	self:pulse_saved()
 end
 
 function library:_bind(flag, sync)
@@ -322,6 +332,25 @@ library._new = function(runtime_type)
 	self:_init_keybinds()
 	self:set_notify_position(self._notify_position, true)
 
+	if _type(state.themes) == 'table' then
+		for name, palette in _pairs(state.themes) do
+			local decoded = {}
+
+			for role, hex in _pairs(palette) do
+				local color = theme.from_hex(hex)
+
+				if color then
+					decoded[role] = color
+				end
+			end
+
+			if next(decoded) then
+				theme.register(name, decoded)
+				library._custom_themes[name] = palette
+			end
+		end
+	end
+
 	if _type(state.theme) == 'string' and theme._palettes[state.theme] then
 		theme.apply(state.theme, false)
 	end
@@ -410,6 +439,8 @@ function library:_init()
 	self._notification_holder = notification_holder
 	self._notification_layout = notification_layout
 	self._notification_order = 0
+	self._notifications = {}
+	self._search = {}
 	self._notify_position = 'bottom-right' 
 
 	local sidebar = create_new('Frame', {
@@ -435,6 +466,21 @@ function library:_init()
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Parent = logo_area,
 	})
+
+	local saved_dot = create_new('Frame', {
+		AnchorPoint = _new_vector2(1, 0.5),
+		Position = _new_udim2(1, -14, 0.5, 0),
+		Size = _new_udim2(0, 5, 0, 5),
+		BorderSizePixel = 0,
+		BackgroundTransparency = 1,
+		ZIndex = 6,
+		Parent = logo_area,
+	})
+
+	theme.paint(saved_dot, 'BackgroundColor3', 'accent')
+	create_pill(saved_dot)
+
+	self._saved_dot = saved_dot
 
 	create_divider(logo_area, _new_udim2(0, 0, 1, -1), _new_udim2(1, 0, 0, 1))
 
@@ -598,7 +644,7 @@ function library:_init()
 		end)
 	end)
 
-	user_input_service.InputChanged:Connect(function(input)
+	watch(user_input_service.InputChanged, function(input)
 		if not self._dragging then
 			return
 		end
@@ -621,7 +667,7 @@ function library:_init()
 		}):Play()
 	end)
 
-	user_input_service.InputBegan:Connect(function(input, processed)
+	watch(user_input_service.InputBegan, function(input, processed)
 		if processed then
 			return
 		end
@@ -833,11 +879,13 @@ function library:create_tab(title, icon, order, category_name)
 		Parent = button,
 	})
 
-	local function create_column(x)
+	local column_width = runtime._is_mobile and (WINDOW_WIDTH - SIDEBAR_WIDTH - COLUMN_MARGIN * 2) or COLUMN_WIDTH
+
+	local function create_column(x, width)
 		local column = create_scroller(
 			runtime._sections,
 			_new_udim2(0, x - 2, 0, 0),
-			_new_udim2(0, COLUMN_WIDTH + 4, 1, 0)
+			_new_udim2(0, width + 4, 1, 0)
 		)
 		create_padding(column, 12, 16, 2, 2)
 		create_list(column, 12)
@@ -846,8 +894,8 @@ function library:create_tab(title, icon, order, category_name)
 		return column
 	end
 
-	local left = create_column(COLUMN_MARGIN)
-	local right = create_column(COLUMN_MARGIN + COLUMN_WIDTH + COLUMN_GAP)
+	local left = create_column(COLUMN_MARGIN, column_width)
+	local right = runtime._is_mobile and left or create_column(COLUMN_MARGIN + COLUMN_WIDTH + COLUMN_GAP, column_width)
 
 	local data = {
 		_button = button,
@@ -1033,25 +1081,480 @@ function library:update_sections(left, right, direction)
 		end
 	end
 
+	local index = 0
+
 	for _, column in { left, right } do
 		if column then
+			index += 1
+
 			local base = column_base[column] or column.Position.X.Offset
+			local delay = (index - 1) * 0.04
 
 			if not column.Visible then
 				column.Visible = true
 				column.Position = _new_udim2(0, base, 0, offset)
 			end
 
-			_create_tween(
-				tween_service,
-				column,
-				_new_tween_info(0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
-				{
-					Position = _new_udim2(0, base, 0, 0),
-				}
-			):Play()
+			_delay(delay, function()
+				_create_tween(
+					tween_service,
+					column,
+					_new_tween_info(0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+					{
+						Position = _new_udim2(0, base, 0, 0),
+					}
+				):Play()
+			end)
 		end
 	end
+end
+
+function library:confirm(message, callback)
+	local runtime = resolve_runtime(self)
+
+	if not runtime or not runtime._ui then
+		return false
+	end
+
+	local overlay = create_new('TextButton', {
+		BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+		BackgroundTransparency = 1,
+		Size = _new_udim2(1, 0, 1, 0),
+		Text = '',
+		AutoButtonColor = false,
+		ZIndex = 400,
+		Parent = runtime._ui,
+	})
+
+	local card = create_new('Frame', {
+		AnchorPoint = _new_vector2(0.5, 0.5),
+		Position = _new_udim2(0.5, 0, 0.5, 0),
+		Size = _new_udim2(0, 260, 0, 0),
+		BorderSizePixel = 0,
+		ClipsDescendants = true,
+		ZIndex = 401,
+		Parent = overlay,
+	})
+
+	theme.paint(card, 'BackgroundColor3', 'surface')
+	create_round(card, 8)
+	create_outline(card)
+
+	create_label({
+		Position = _new_udim2(0, 16, 0, 14),
+		Size = _new_udim2(1, -32, 0, 38),
+		Text = _tostring(message or 'Are you sure?'),
+		TextRole = 'text',
+		TextSize = runtime._label_size,
+		TextWrapped = true,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextYAlignment = Enum.TextYAlignment.Top,
+		ZIndex = 402,
+		Parent = card,
+	})
+
+	local function close()
+		_create_tween(tween_service, card, _new_tween_info(0.18, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
+			Size = _new_udim2(0, 260, 0, 0),
+		}):Play()
+
+		_create_tween(tween_service, overlay, _new_tween_info(0.18), {
+			BackgroundTransparency = 1,
+		}):Play()
+
+		_delay(0.2, function()
+			if overlay.Parent then
+				overlay:Destroy()
+			end
+		end)
+	end
+
+	local cancel = create_new('TextButton', {
+		AnchorPoint = _new_vector2(1, 0),
+		Position = _new_udim2(0.5, -6, 1, -38),
+		Size = _new_udim2(0, 108, 0, 26),
+		FontFace = FONT,
+		Text = 'Cancel',
+		TextSize = runtime._label_size,
+		AutoButtonColor = false,
+		BorderSizePixel = 0,
+		ZIndex = 402,
+		Parent = card,
+	})
+
+	theme.paint(cancel, 'BackgroundColor3', 'surface_alt')
+	theme.paint(cancel, 'TextColor3', 'text_dim')
+	create_round(cancel, 6)
+
+	local accept = create_new('TextButton', {
+		AnchorPoint = _new_vector2(0, 0),
+		Position = _new_udim2(0.5, 6, 1, -38),
+		Size = _new_udim2(0, 108, 0, 26),
+		FontFace = FONT,
+		Text = 'Confirm',
+		TextSize = runtime._label_size,
+		AutoButtonColor = false,
+		BorderSizePixel = 0,
+		ZIndex = 402,
+		Parent = card,
+	})
+
+	theme.paint(accept, 'BackgroundColor3', 'accent')
+	theme.paint(accept, 'TextColor3', 'accent_text')
+	create_round(accept, 6)
+
+	cancel.MouseButton1Click:Connect(function()
+		close()
+	end)
+
+	accept.MouseButton1Click:Connect(function()
+		close()
+
+		if callback then
+			local ok, err = _pcall(callback)
+
+			if not ok then
+				warn(`[Angeli] confirm callback failed: {_tostring(err)}`)
+			end
+		end
+	end)
+
+	_create_tween(tween_service, overlay, _new_tween_info(0.2), {
+		BackgroundTransparency = 0.45,
+	}):Play()
+
+	_create_tween(tween_service, card, _new_tween_info(0.24, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+		Size = _new_udim2(0, 260, 0, 120),
+	}):Play()
+
+	return true
+end
+
+function library:show_tooltip(text)
+	local runtime = resolve_runtime(self)
+
+	if not runtime or not runtime._ui or not text or text == '' then
+		return
+	end
+
+	library.hide_tooltip(runtime)
+
+	local mouse = user_input_service:GetMouseLocation()
+
+	local tip = create_new('Frame', {
+		Position = _new_udim2(0, mouse.X + 14, 0, mouse.Y + 18),
+		AutomaticSize = Enum.AutomaticSize.X,
+		Size = _new_udim2(0, 0, 0, 22),
+		BorderSizePixel = 0,
+		ZIndex = 500,
+		Parent = runtime._ui,
+	})
+
+	theme.paint(tip, 'BackgroundColor3', 'surface_alt')
+	create_round(tip, 4)
+	create_outline(tip)
+	create_padding(tip, 0, 0, 8, 8)
+
+	create_label({
+		Size = _new_udim2(1, 0, 1, 0),
+		Text = text,
+		TextRole = 'text',
+		TextSize = runtime._small_size + 1,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		ZIndex = 501,
+		Parent = tip,
+	})
+
+	runtime._tooltip = tip
+end
+
+function library:hide_tooltip()
+	local runtime = resolve_runtime(self)
+
+	if runtime and runtime._tooltip then
+		runtime._tooltip:Destroy()
+		runtime._tooltip = nil
+	end
+end
+
+function library:pulse_saved()
+	if not self._saved_dot then
+		return
+	end
+
+	local dot = self._saved_dot
+
+	dot.BackgroundTransparency = 0.1
+
+	_create_tween(tween_service, dot, _new_tween_info(0.6, Enum.EasingStyle.Quint), {
+		BackgroundTransparency = 1,
+	}):Play()
+end
+
+function library:destroy()
+	for _, connection in _pairs(connections) do
+		_pcall(function()
+			connection:Disconnect()
+		end)
+	end
+
+	_clear(connections)
+
+	for _, gui in _pairs({ self._ui, self._notify_gui }) do
+		if gui then
+			gui:Destroy()
+		end
+	end
+
+	self._ui = nil
+	self._notify_gui = nil
+	self._tooltip = nil
+
+	if library._current == self then
+		library._current = nil
+	end
+end
+
+function library:_index(title, tab)
+	if _type(title) ~= 'string' or title == '' or not tab then
+		return
+	end
+
+	_insert(self._search, {
+		title = title,
+		tab = tab,
+	})
+end
+
+function library:open_palette()
+	local runtime = resolve_runtime(self)
+
+	if not runtime or not runtime._ui or runtime._palette then
+		return false
+	end
+
+	local overlay = create_new('TextButton', {
+		BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+		BackgroundTransparency = 0.5,
+		Size = _new_udim2(1, 0, 1, 0),
+		Text = '',
+		AutoButtonColor = false,
+		ZIndex = 600,
+		Parent = runtime._ui,
+	})
+
+	local box = create_new('Frame', {
+		AnchorPoint = _new_vector2(0.5, 0),
+		Position = _new_udim2(0.5, 0, 0, 90),
+		Size = _new_udim2(0, 300, 0, 36),
+		BorderSizePixel = 0,
+		ClipsDescendants = true,
+		ZIndex = 601,
+		Parent = overlay,
+	})
+
+	theme.paint(box, 'BackgroundColor3', 'surface')
+	create_round(box, 8)
+	create_outline(box)
+
+	local input = create_new('TextBox', {
+		Size = _new_udim2(1, 0, 0, 36),
+		ClearTextOnFocus = false,
+		FontFace = FONT,
+		PlaceholderText = 'Search settings',
+		Text = '',
+		TextSize = runtime._label_size,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		BorderSizePixel = 0,
+		ZIndex = 602,
+		Parent = box,
+	})
+
+	theme.paint(input, 'BackgroundColor3', 'surface_alt')
+	theme.paint(input, 'TextColor3', 'text')
+	create_padding(input, 0, 0, 12, 12)
+
+	local list = create_new('ScrollingFrame', {
+		Position = _new_udim2(0, 0, 0, 36),
+		Size = _new_udim2(1, 0, 0, 0),
+		BackgroundTransparency = 1,
+		CanvasSize = _new_udim2(0, 0, 0, 0),
+		AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		ScrollBarThickness = 0,
+		BorderSizePixel = 0,
+		ZIndex = 602,
+		Parent = box,
+	})
+
+	create_padding(list, 4, 4, 4, 4)
+	create_list(list, 2)
+
+	runtime._palette = overlay
+
+	local function close()
+		if runtime._palette == overlay then
+			runtime._palette = nil
+		end
+
+		overlay:Destroy()
+	end
+
+	local function render(query)
+		for _, child in list:GetChildren() do
+			if child:IsA('TextButton') then
+				child:Destroy()
+			end
+		end
+
+		query = string.lower(trim(query))
+
+		local shown = 0
+
+		for _, entry in runtime._search do
+			if shown < 6 and (query == '' or string.find(string.lower(entry.title), query, 1, true)) then
+				shown += 1
+
+				local button = create_new('TextButton', {
+					BackgroundTransparency = 1,
+					LayoutOrder = shown,
+					Size = _new_udim2(1, 0, 0, 26),
+					FontFace = FONT,
+					Text = entry.title,
+					TextSize = runtime._label_size,
+					TextXAlignment = Enum.TextXAlignment.Left,
+					AutoButtonColor = false,
+					BorderSizePixel = 0,
+					ZIndex = 603,
+					Parent = list,
+				})
+
+				theme.paint(button, 'TextColor3', 'text_dim')
+				create_padding(button, 0, 0, 8, 8)
+
+				button.MouseButton1Click:Connect(function()
+					local data = entry.tab._data
+
+					if data then
+						runtime._active_tab = data
+						runtime:update_tabs(data)
+						runtime:update_sections(data._left, data._right, 1)
+					end
+
+					close()
+				end)
+			end
+		end
+
+		list.Size = _new_udim2(1, 0, 0, shown * 28)
+		box.Size = _new_udim2(0, 300, 0, 36 + shown * 28)
+	end
+
+	input:GetPropertyChangedSignal('Text'):Connect(function()
+		render(input.Text)
+	end)
+
+	overlay.MouseButton1Click:Connect(close)
+
+	render('')
+	input:CaptureFocus()
+
+	return true
+end
+
+function library:set_watermark(text)
+	local runtime = resolve_runtime(self)
+
+	if not runtime or not runtime._notify_gui then
+		return false
+	end
+
+	if runtime._watermark then
+		runtime._watermark:Destroy()
+		runtime._watermark = nil
+	end
+
+	text = trim(text)
+
+	if text == '' then
+		return true
+	end
+
+	local label = create_label({
+		Name = '_watermark',
+		AnchorPoint = _new_vector2(0, 1),
+		Position = _new_udim2(0, 12, 1, -12),
+		AutomaticSize = Enum.AutomaticSize.X,
+		Size = _new_udim2(0, 0, 0, 20),
+		Text = text,
+		TextRole = 'text',
+		TextSize = runtime._label_size,
+		TextTransparency = 0.25,
+		ZIndex = 150,
+		Parent = runtime._notify_gui,
+	})
+
+	runtime._watermark = label
+
+	local dragging = false
+	local start = nil
+	local origin = nil
+
+	label.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			start = input.Position
+			origin = label.Position
+		end
+	end)
+
+	watch(user_input_service.InputChanged, function(input)
+		if not dragging then
+			return
+		end
+
+		if input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch then
+			return
+		end
+
+		local delta = input.Position - start
+
+		label.Position = _new_udim2(
+			origin.X.Scale,
+			origin.X.Offset + delta.X,
+			origin.Y.Scale,
+			origin.Y.Offset + delta.Y
+		)
+	end)
+
+	watch(user_input_service.InputEnded, function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = false
+		end
+	end)
+
+	return true
+end
+
+function library:save_theme(name)
+	name = trim(name)
+
+	if name == '' or not theme._current then
+		return false
+	end
+
+	local palette = {}
+	local encoded = {}
+
+	for role, color in _pairs(theme._current) do
+		palette[role] = color
+		encoded[role] = theme.to_hex(color)
+	end
+
+	theme.register(name, palette)
+	library._custom_themes[name] = encoded
+	theme.apply(name, true)
+
+	return true
 end
 
 function library:set_notify_position(position, silent)
@@ -1108,6 +1611,24 @@ function library:notify(message)
 
 	theme.paint(card, 'BackgroundColor3', 'surface')
 	create_round(card, 6)
+
+	local active = runtime._notifications
+
+	_insert(active, card)
+
+	for index = #active, 1, -1 do
+		if not active[index].Parent then
+			table.remove(active, index)
+		end
+	end
+
+	while #active > 4 do
+		local oldest = table.remove(active, 1)
+
+		if oldest and oldest.Parent then
+			oldest:Destroy()
+		end
+	end
 
 	local icon = create_new('Frame', {
 		AnchorPoint = _new_vector2(0, 0.5),
@@ -1276,7 +1797,7 @@ function library:_init_keybinds()
 		end)
 	end)
 
-	user_input_service.InputChanged:Connect(function(input)
+	watch(user_input_service.InputChanged, function(input)
 		if not dragging then
 			return
 		end
@@ -1382,6 +1903,20 @@ local function resolve_key(value)
 	return nil
 end
 
+local function attach_tooltip(runtime, instance, text)
+	if _type(text) ~= 'string' or text == '' then
+		return
+	end
+
+	instance.MouseEnter:Connect(function()
+		library.show_tooltip(runtime, text)
+	end)
+
+	instance.MouseLeave:Connect(function()
+		library.hide_tooltip(runtime)
+	end)
+end
+
 local function create_switch(parent, order, values, runtime)
 	local state = values.default == true
 	local key_flag = values.keybind_flag or (values.flag and `{values.flag}_key`)
@@ -1438,6 +1973,7 @@ local function create_switch(parent, order, values, runtime)
 	local chip = nil
 	local picking = false
 	local holding = false
+	local mode = values.keybind_mode or 'Toggle'
 
 	if key then
 		chip = create_new('TextButton', {
@@ -1538,7 +2074,55 @@ local function create_switch(parent, order, values, runtime)
 			chip.Text = '...'
 		end)
 
-		user_input_service.InputBegan:Connect(function(input, processed)
+		chip.MouseButton2Click:Connect(function()
+			if runtime._keybind_menu then
+				runtime._keybind_menu:Destroy()
+				runtime._keybind_menu = nil
+			end
+
+			local mouse = user_input_service:GetMouseLocation()
+
+			local menu = create_new('Frame', {
+				Position = _new_udim2(0, mouse.X, 0, mouse.Y),
+				Size = _new_udim2(0, 104, 0, 3 * 24 + 8),
+				BorderSizePixel = 0,
+				ZIndex = 500,
+				Parent = runtime._ui,
+			})
+
+			theme.paint(menu, 'BackgroundColor3', 'surface')
+			create_round(menu, 6)
+			create_outline(menu)
+			create_padding(menu, 4, 4, 4, 4)
+			create_list(menu, 0)
+
+			runtime._keybind_menu = menu
+
+			for index, option in { 'Toggle', 'Hold', 'Press' } do
+				local entry = create_new('TextButton', {
+					BackgroundTransparency = 1,
+					LayoutOrder = index,
+					Size = _new_udim2(1, 0, 0, 24),
+					FontFace = FONT,
+					Text = option,
+					TextSize = runtime._label_size,
+					AutoButtonColor = false,
+					BorderSizePixel = 0,
+					ZIndex = 501,
+					Parent = menu,
+				})
+
+				theme.paint(entry, 'TextColor3', option == mode and 'text' or 'text_dim')
+
+				entry.MouseButton1Click:Connect(function()
+					mode = option
+					menu:Destroy()
+					runtime._keybind_menu = nil
+				end)
+			end
+		end)
+
+		watch(user_input_service.InputBegan, function(input, processed)
 			if picking then
 				if input.UserInputType == Enum.UserInputType.Keyboard then
 					picking = false
@@ -1550,8 +2134,6 @@ local function create_switch(parent, order, values, runtime)
 			if processed or not key or input.KeyCode ~= key then
 				return
 			end
-
-			local mode = values.keybind_mode or 'Toggle'
 
 			if mode == 'Hold' then
 				holding = true
@@ -1565,7 +2147,7 @@ local function create_switch(parent, order, values, runtime)
 			end
 		end)
 
-		user_input_service.InputEnded:Connect(function(input)
+		watch(user_input_service.InputEnded, function(input)
 			if holding and input.KeyCode == key then
 				holding = false
 				set_value(false, true)
@@ -1593,6 +2175,8 @@ local function create_switch(parent, order, values, runtime)
 			set_value(value, false, true, true)
 		end)
 	end
+
+	attach_tooltip(runtime, row, values.desc)
 
 	return {
 		set = set_value,
@@ -1738,7 +2322,7 @@ local function create_slider(parent, order, values, runtime)
 		from_input(input)
 	end)
 
-	user_input_service.InputEnded:Connect(function(input)
+	watch(user_input_service.InputEnded, function(input)
 		if
 			input.UserInputType == Enum.UserInputType.MouseButton1
 			or input.UserInputType == Enum.UserInputType.Touch
@@ -1747,7 +2331,7 @@ local function create_slider(parent, order, values, runtime)
 		end
 	end)
 
-	user_input_service.InputChanged:Connect(function(input)
+	watch(user_input_service.InputChanged, function(input)
 		if not dragging then
 			return
 		end
@@ -1767,6 +2351,8 @@ local function create_slider(parent, order, values, runtime)
 			commit(next_value, false, true, true)
 		end)
 	end
+
+	attach_tooltip(runtime, row, values.desc)
 
 	return {
 		set = commit,
@@ -2155,6 +2741,8 @@ local function create_dropdown(parent, order, values, runtime)
 		end)
 	end
 
+	attach_tooltip(runtime, container, values.desc)
+
 	return dropdown
 end
 
@@ -2188,6 +2776,8 @@ local function create_button(parent, order, values, runtime)
 			end
 		end
 	end)
+
+	attach_tooltip(runtime, button, values.desc)
 
 	return button
 end
@@ -2262,6 +2852,8 @@ local function create_textbox(parent, order, values, runtime)
 			box.Text = raw
 		end)
 	end
+
+	attach_tooltip(runtime, frame, values.desc)
 
 	return {
 		get = function()
@@ -2341,7 +2933,7 @@ local function create_keybind(parent, order, values, runtime)
 		bind.Text = '...'
 	end)
 
-	user_input_service.InputBegan:Connect(function(input, processed)
+	watch(user_input_service.InputBegan, function(input, processed)
 		if picking then
 			if input.UserInputType == Enum.UserInputType.Keyboard then
 				key = input.KeyCode
@@ -2376,6 +2968,8 @@ local function create_keybind(parent, order, values, runtime)
 	if values.flag then
 		library.register_keybind(runtime, values.flag, values.title or 'Keybind', key.Name)
 	end
+
+	attach_tooltip(runtime, row, values.desc)
 
 	return {
 		get = function()
@@ -2668,7 +3262,7 @@ local function create_colorpicker(parent, order, values, runtime)
 		end
 	end)
 
-	user_input_service.InputChanged:Connect(function(input)
+	watch(user_input_service.InputChanged, function(input)
 		if not dragging then
 			return
 		end
@@ -2684,7 +3278,7 @@ local function create_colorpicker(parent, order, values, runtime)
 		end
 	end)
 
-	user_input_service.InputEnded:Connect(function(input)
+	watch(user_input_service.InputEnded, function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 			dragging = nil
 		end
@@ -2726,6 +3320,8 @@ local function create_colorpicker(parent, order, values, runtime)
 		end)
 	end
 
+	attach_tooltip(runtime, frame, values.desc)
+
 	return {
 		get = function()
 			return color
@@ -2748,6 +3344,7 @@ function group_methods:create_toggle(flag, values)
 	end
 	values = values or {}
 	values.flag = flag
+	self._runtime:_index(values.title, self._tab)
 	return create_switch(self._frame, self:_next_order(), values, self._runtime)
 end
 
@@ -2758,6 +3355,7 @@ function group_methods:create_slider(flag, values)
 	end
 	values = values or {}
 	values.flag = flag
+	self._runtime:_index(values.title, self._tab)
 	return create_slider(self._frame, self:_next_order(), values, self._runtime)
 end
 
@@ -2768,6 +3366,7 @@ function group_methods:create_dropdown(flag, values)
 	end
 	values = values or {}
 	values.flag = flag
+	self._runtime:_index(values.title, self._tab)
 	return create_dropdown(self._frame, self:_next_order(), values, self._runtime)
 end
 
@@ -2776,6 +3375,7 @@ function group_methods:create_button(flag, values)
 		values = flag
 	end
 	values = values or {}
+	self._runtime:_index(values.title, self._tab)
 	return create_button(self._frame, self:_next_order(), values, self._runtime)
 end
 
@@ -2786,6 +3386,7 @@ function group_methods:create_textbox(flag, values)
 	end
 	values = values or {}
 	values.flag = flag
+	self._runtime:_index(values.title, self._tab)
 	return create_textbox(self._frame, self:_next_order(), values, self._runtime)
 end
 
@@ -2796,6 +3397,7 @@ function group_methods:create_colorpicker(flag, values)
 	end
 	values = values or {}
 	values.flag = flag
+	self._runtime:_index(values.title, self._tab)
 	return create_colorpicker(self._frame, self:_next_order(), values, self._runtime)
 end
 
@@ -2806,6 +3408,7 @@ function group_methods:create_keybind(flag, values)
 	end
 	values = values or {}
 	values.flag = flag
+	self._runtime:_index(values.title, self._tab)
 	return create_keybind(self._frame, self:_next_order(), values, self._runtime)
 end
 
@@ -2850,6 +3453,14 @@ end
 
 library.delete_profile = function(name)
 	return save_manager.delete(name)
+end
+
+library.export_profile = function(name)
+	return save_manager.export(name)
+end
+
+library.import_profile = function(text, name)
+	return save_manager.import(text, name)
 end
 
 

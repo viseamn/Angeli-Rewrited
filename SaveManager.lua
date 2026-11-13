@@ -251,6 +251,31 @@ function save_manager.delete(name)
 	return true
 end
 
+function save_manager.export(name)
+	if not save_manager.exists(name) then
+		return nil
+	end
+
+	return read_file(profile_path(name))
+end
+
+function save_manager.import(text, name)
+	local decoded = decode(text)
+
+	if not decoded then
+		return false
+	end
+
+	name = safe_name(name) ~= '' and safe_name(name) or 'imported'
+	ensure_folder(config_folder())
+
+	if not write_file(profile_path(name), encode(decoded) or '{}') then
+		return false
+	end
+
+	return save_manager.load(name)
+end
+
 function save_manager.listen(callback)
 	_insert(save_manager._listeners, callback)
 	return callback

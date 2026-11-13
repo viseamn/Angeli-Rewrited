@@ -20,6 +20,24 @@ local function shallow_copy(source)
 	return copy
 end
 
+function theme.to_hex(color)
+	local r = math.floor(color.R * 255 + 0.5)
+	local g = math.floor(color.G * 255 + 0.5)
+	local b = math.floor(color.B * 255 + 0.5)
+
+	return string.format('#%02X%02X%02X', r, g, b)
+end
+
+function theme.from_hex(text)
+	local r, g, b = string.match(tostring(text or ''), '^#?(%x%x)(%x%x)(%x%x)$')
+
+	if not r then
+		return nil
+	end
+
+	return Color3.fromRGB(tonumber(r, 16), tonumber(g, 16), tonumber(b, 16))
+end
+
 function theme.color(role)
 	local palette = theme._current
 	return (palette and palette[role]) or Color3.fromRGB(255, 255, 255)
