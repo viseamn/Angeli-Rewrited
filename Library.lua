@@ -63,6 +63,13 @@ local COLUMN_MARGIN = 10
 local COLUMN_GAP = 12
 local COLUMN_WIDTH = (WINDOW_WIDTH - SIDEBAR_WIDTH - COLUMN_MARGIN * 2 - COLUMN_GAP) / 2
 
+local NOTIFY_ANCHORS = {
+	['top-left'] = { horizontal = Enum.HorizontalAlignment.Left, vertical = Enum.VerticalAlignment.Top },
+	['top-right'] = { horizontal = Enum.HorizontalAlignment.Right, vertical = Enum.VerticalAlignment.Top },
+	['bottom-left'] = { horizontal = Enum.HorizontalAlignment.Left, vertical = Enum.VerticalAlignment.Bottom },
+	['bottom-right'] = { horizontal = Enum.HorizontalAlignment.Right, vertical = Enum.VerticalAlignment.Bottom },
+}
+
 local theme
 local save_manager
 
@@ -214,6 +221,7 @@ function library:_persist_state()
 		profile = save_manager._active,
 		theme = theme.current(),
 		autosave = save_manager._autosave,
+		notify = library._current and library._current._notify_position or nil,
 	})
 end
 
@@ -304,8 +312,13 @@ library._new = function(runtime_type)
 		save_manager._active = state.profile
 	end
 
+	if _type(state.notify) == 'string' and NOTIFY_ANCHORS[state.notify] then
+		self._notify_position = state.notify
+	end
+
 	self:_init()
 	self:_init_keybinds()
+	self:set_notify_position(self._notify_position, true)
 
 	if _type(state.theme) == 'string' and theme._palettes[state.theme] then
 		theme.apply(state.theme, false)
@@ -360,26 +373,27 @@ function library:_init()
 	local notification_holder = create_new('Frame', {
 		Name = '_notifications',
 		BackgroundTransparency = 1,
-		AnchorPoint = _new_vector2(0.5, 1),
-		Position = _new_udim2(0.5, 0, 0.5, 178),
-		Size = _new_udim2(0, 560, 0, 180),
+		Size = _new_udim2(1, 0, 1, 0),
 		BorderSizePixel = 0,
 		ZIndex = 199,
 		Parent = gui,
 	})
 
-	create_new('UIListLayout', {
+	create_padding(notification_holder, 16, 16, 16, 16)
+
+	local notification_layout = create_new('UIListLayout', {
 		FillDirection = Enum.FillDirection.Vertical,
-		HorizontalAlignment = Enum.HorizontalAlignment.Center,
+		HorizontalAlignment = Enum.HorizontalAlignment.Right,
 		VerticalAlignment = Enum.VerticalAlignment.Bottom,
 		SortOrder = Enum.SortOrder.LayoutOrder,
-		Padding = _new_udim(0, 6),
+		Padding = _new_udim(0, 8),
 		Parent = notification_holder,
 	})
 
 	self._notification_holder = notification_holder
-	self._notification_scale = create_new('UIScale', { Parent = notification_holder })
+	self._notification_layout = notification_layout
 	self._notification_order = 0
+	self._notify_position = 'bottom-right' 
 
 	local sidebar = create_new('Frame', {
 		BackgroundTransparency = 1,
@@ -520,9 +534,6 @@ function library:_init()
 		if self._keybind_scale then
 			self._keybind_scale.Scale = self._ui_scale
 		end
-
-		self._notification_holder.Position = _new_udim2(0.5, 0, 0.5, 178 * self._ui_scale)
-		self._notification_scale.Scale = self._ui_scale
 
 		_defer(function()
 			self:_move_pin()
@@ -1026,77 +1037,140 @@ function library:update_sections(left, right, direction)
 	end
 end
 
+function library:set_notify_position(position, silent)
+	local preset = NOTIFY_ANCHORS[position]
+
+	if not preset then
+		return false
+	end
+
+	local runtime = resolve_runtime(self)
+
+	if not runtime or not runtime._notification_layout then
+		return false
+	end
+
+	runtime._notification_layout.HorizontalAlignment = preset.horizontal
+	runtime._notification_layout.VerticalAlignment = preset.vertical
+	runtime._notify_position = position
+
+	if not silent then
+		library._persist_state(runtime)
+	end
+
+	return true
+end
+
 function library:notify(message)
 	local runtime = resolve_runtime(self)
+
 	if not runtime or not runtime._notification_holder then
 		return
 	end
 
-	local text = string.gsub(_tostring(message or ''), '[\r\n]+', ' ')
-	text = trim(text)
+	local text = trim(string.gsub(_tostring(message or ''), '[\r\n]+', ' '))
+
 	if text == '' then
 		return
 	end
 
-	local text_width = text_service:GetTextSize(text, runtime._label_size, Enum.Font.GothamSemibold, _new_vector2(1000, 26)).X
-	local width = _clamp(text_width + 24, 72, 540)
+	local width = runtime._is_mobile and 260 or 300
+	local height = 40
 
 	runtime._notification_order += 1
 
-	local notification = create_new('Frame', {
+	local card = create_new('Frame', {
 		BackgroundTransparency = 1,
 		LayoutOrder = runtime._notification_order,
-		Size = _new_udim2(0, width - 12, 0, 0),
+		Size = _new_udim2(0, width, 0, 0),
 		BorderSizePixel = 0,
 		ClipsDescendants = true,
 		ZIndex = 200,
 		Parent = runtime._notification_holder,
 	})
 
-	theme.paint(notification, 'BackgroundColor3', 'surface')
-	create_round(notification, 6)
+	theme.paint(card, 'BackgroundColor3', 'surface')
+	create_round(card, 6)
 
-	local stroke = create_outline(notification)
-	stroke.Transparency = 1
+	local icon = create_new('Frame', {
+		AnchorPoint = _new_vector2(0, 0.5),
+		Position = _new_udim2(0, 12, 0.5, 0),
+		Size = _new_udim2(0, 16, 0, 16),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		ZIndex = 201,
+		Parent = card,
+	})
+
+	create_pill(icon)
+
+	local icon_stroke = create_new('UIStroke', {
+		Thickness = 1.5,
+		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+		Parent = icon,
+	})
+
+	theme.paint(icon_stroke, 'Color', 'text')
+	icon_stroke.Transparency = 1
+
+	local icon_label = create_label({
+		Size = _new_udim2(1, 0, 1, 0),
+		Text = 'i',
+		TextRole = 'text',
+		TextSize = runtime._small_size + 2,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		TextYAlignment = Enum.TextYAlignment.Center,
+		TextTransparency = 1,
+		ZIndex = 202,
+		Parent = icon,
+	})
 
 	local label = create_label({
-		Position = _new_udim2(0, 10, 0, 0),
-		Size = _new_udim2(1, -20, 1, 0),
+		Position = _new_udim2(0, 38, 0, 0),
+		Size = _new_udim2(1, -50, 1, 0),
 		Text = text,
 		TextRole = 'text',
 		TextSize = runtime._label_size,
-		TextTransparency = 1,
+		TextXAlignment = Enum.TextXAlignment.Left,
 		TextTruncate = Enum.TextTruncate.AtEnd,
+		TextTransparency = 1,
 		ZIndex = 201,
-		Parent = notification,
+		Parent = card,
 	})
 
-	_create_tween(tween_service, notification, _new_tween_info(0.25, Enum.EasingStyle.Quint), {
+	_create_tween(tween_service, card, _new_tween_info(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
 		BackgroundTransparency = 0,
-		Size = _new_udim2(0, width, 0, 26),
+		Size = _new_udim2(0, width, 0, height),
 	}):Play()
 
 	_create_tween(tween_service, label, _new_tween_info(0.2, Enum.EasingStyle.Quint), {
 		TextTransparency = 0.1,
 	}):Play()
 
-	_create_tween(tween_service, stroke, _new_tween_info(0.2), { Transparency = 0 }):Play()
+	_create_tween(tween_service, icon_label, _new_tween_info(0.2, Enum.EasingStyle.Quint), {
+		TextTransparency = 0.1,
+	}):Play()
+
+	_create_tween(tween_service, icon_stroke, _new_tween_info(0.2), { Transparency = 0 }):Play()
 
 	_delay(2.6, function()
-		if not notification.Parent then
+		if not card.Parent then
 			return
 		end
-		_create_tween(tween_service, notification, _new_tween_info(0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
+
+		_create_tween(tween_service, card, _new_tween_info(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
 			BackgroundTransparency = 1,
-			Size = _new_udim2(0, width - 12, 0, 0),
+			Size = _new_udim2(0, width, 0, 0),
 		}):Play()
+
 		_create_tween(tween_service, label, _new_tween_info(0.2), { TextTransparency = 1 }):Play()
-		_create_tween(tween_service, stroke, _new_tween_info(0.2), { Transparency = 1 }):Play()
+		_create_tween(tween_service, icon_label, _new_tween_info(0.2), { TextTransparency = 1 }):Play()
+		_create_tween(tween_service, icon_stroke, _new_tween_info(0.2), { Transparency = 1 }):Play()
 	end)
 
 	_delay(2.9, function()
-		if notification.Parent then
-			notification:Destroy()
+		if card.Parent then
+			card:Destroy()
 		end
 	end)
 end

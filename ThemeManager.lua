@@ -82,6 +82,17 @@ function theme.apply(name, persist)
 	return true
 end
 
+function theme.set_accent(color)
+	if not color then
+		return false
+	end
+
+	theme._current.accent = color
+	theme.apply(theme._name, false)
+
+	return true
+end
+
 function theme.list()
 	return shallow_copy(theme._order)
 end
