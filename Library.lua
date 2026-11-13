@@ -64,7 +64,6 @@ local COLUMN_GAP = 12
 local COLUMN_WIDTH = (WINDOW_WIDTH - SIDEBAR_WIDTH - COLUMN_MARGIN * 2 - COLUMN_GAP) / 2
 
 local NOTIFY_ANCHORS = {
-	['top-left'] = { horizontal = Enum.HorizontalAlignment.Left, vertical = Enum.VerticalAlignment.Top },
 	['top-right'] = { horizontal = Enum.HorizontalAlignment.Right, vertical = Enum.VerticalAlignment.Top },
 	['bottom-left'] = { horizontal = Enum.HorizontalAlignment.Left, vertical = Enum.VerticalAlignment.Bottom },
 	['bottom-right'] = { horizontal = Enum.HorizontalAlignment.Right, vertical = Enum.VerticalAlignment.Bottom },
@@ -379,7 +378,7 @@ function library:_init()
 		Parent = gui,
 	})
 
-	create_padding(notification_holder, 16, 16, 16, 16)
+	create_padding(notification_holder, 32, 16, 16, 16)
 
 	local notification_layout = create_new('UIListLayout', {
 		FillDirection = Enum.FillDirection.Vertical,
