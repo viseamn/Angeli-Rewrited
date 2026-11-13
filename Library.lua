@@ -54,10 +54,7 @@ local _pcall = pcall
 local _tostring = tostring
 local _type = type
 
-local FONT_FAMILY = 'rbxasset://fonts/families/GothamSSm.json'
-local FONT = Font.new(FONT_FAMILY, Enum.FontWeight.SemiBold, Enum.FontStyle.Normal)
-local FONT_BOLD = Font.new(FONT_FAMILY, Enum.FontWeight.Bold, Enum.FontStyle.Normal)
-local FONT_REGULAR = Font.new(FONT_FAMILY, Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+local FONT = Font.new('rbxasset://fonts/families/GothamSSm.json', Enum.FontWeight.SemiBold, Enum.FontStyle.Normal)
 
 local WINDOW_WIDTH = 600
 local WINDOW_HEIGHT = 420
@@ -168,7 +165,7 @@ local create_label = LPH_NO_VIRTUALIZE(function(properties)
 	local role = properties.TextRole or 'text_dim'
 	properties.TextRole = nil
 	properties.BackgroundTransparency = 1
-	properties.FontFace = properties.FontFace or FONT_REGULAR
+	properties.FontFace = properties.FontFace or FONT
 	properties.BorderSizePixel = 0
 	properties.TextColor3 = properties.TextColor3 or theme.color(role)
 	local label = create_new('TextLabel', properties)
@@ -452,6 +449,7 @@ function library:_init()
 	self._toggles = {}
 	self._array_rows = {}
 	self._array_labels = {}
+	self._array_pending = {}
 	self._rainbow = false
 	self._notify_position = 'bottom-right' 
 
@@ -883,7 +881,6 @@ function library:create_tab(title, icon, order, category_name)
 
 	local title_label = create_label({
 		Position = _new_udim2(0, 34, 0, 0),
-		FontFace = FONT,
 		Size = _new_udim2(1, -44, 1, 0),
 		Text = title,
 		TextSize = runtime._label_size,
@@ -1026,7 +1023,6 @@ function library:create_tab(title, icon, order, category_name)
 
 		create_label({
 			LayoutOrder = 0,
-			FontFace = FONT_BOLD,
 			Size = _new_udim2(1, 0, 0, 12),
 			Text = string.upper(values.title),
 			TextSize = runtime._small_size + 1,
@@ -1491,15 +1487,32 @@ function library:_refresh_array()
 	_clear(runtime._array_rows)
 	_clear(runtime._array_labels)
 
+	local now = os.clock()
 	local names = {}
+	local fading = {}
 
 	for _, entry in runtime._toggles do
 		if entry.get() then
 			_insert(names, entry.title)
+		else
+			local until_time = runtime._array_pending[entry.title]
+
+			if until_time and until_time > now then
+				_insert(names, entry.title)
+				fading[entry.title] = true
+			elseif until_time then
+				runtime._array_pending[entry.title] = nil
+			end
 		end
 	end
 
 	_sort(names)
+
+	if next(fading) then
+		_delay(0.65, function()
+			library._refresh_array(runtime)
+		end)
+	end
 
 	local accent = theme.color('accent')
 	local hue, saturation, value = accent:ToHSV()
@@ -1541,13 +1554,15 @@ function library:_refresh_array()
 			Parent = label,
 		})
 
+		local target_transparency = fading[title] and 0.55 or 0
+
 		_create_tween(
 			tween_service,
 			label,
 			_new_tween_info(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.Out, 0, false, index * 0.03),
 			{
 				Position = _new_udim2(0, 0, 0, 0),
-				TextTransparency = 0,
+				TextTransparency = target_transparency,
 			}
 		):Play()
 
@@ -1556,7 +1571,7 @@ function library:_refresh_array()
 	end
 end
 
-function library:set_watermark(text)
+function library:set_watermark(state)
 	local runtime = resolve_runtime(self)
 
 	if not runtime or not runtime._notify_gui then
@@ -1569,10 +1584,10 @@ function library:set_watermark(text)
 	end
 
 	_clear(runtime._array_rows)
+	_clear(runtime._array_labels)
 
-	text = trim(text)
-
-	if text == '' then
+	if not state then
+		runtime._watermark_header = nil
 		return true
 	end
 
@@ -1596,24 +1611,15 @@ function library:set_watermark(text)
 		Parent = root,
 	})
 
-	local header = create_label({
+	local header = create_new('ImageLabel', {
 		LayoutOrder = 0,
-		FontFace = FONT_BOLD,
 		AutomaticSize = Enum.AutomaticSize.X,
-		Size = _new_udim2(0, 0, 0, 32),
-		Text = text,
-		TextRole = 'accent',
-		TextSize = runtime._label_size + 10,
-		TextXAlignment = Enum.TextXAlignment.Left,
+		Size = _new_udim2(0, 0, 0, 34),
+		BackgroundTransparency = 1,
+		Image = 'rbxassetid://95943456246483',
+		BorderSizePixel = 0,
 		ZIndex = 151,
 		Parent = root,
-	})
-
-	create_new('UIStroke', {
-		Thickness = 1,
-		Color = Color3.fromRGB(0, 0, 0),
-		Transparency = 0.4,
-		Parent = header,
 	})
 
 	runtime._watermark = root
@@ -1668,14 +1674,6 @@ function library:set_watermark(text)
 
 			local hue, saturation, value = theme.color('accent'):ToHSV()
 			local shift = (os.clock() * 0.12) % 1
-
-			if runtime._watermark_header then
-				runtime._watermark_header.TextColor3 = Color3.fromHSV(
-					(hue + shift) % 1,
-					_max(saturation, 0.6),
-					_max(value, 0.9)
-				)
-			end
 
 			for index, label in runtime._array_labels do
 				label.TextColor3 = Color3.fromHSV(
@@ -2171,8 +2169,14 @@ local function create_switch(parent, order, values, runtime)
 	end
 
 	local function set_value(value, animate, silent, quiet)
+		local previous = state
+
 		state = value == true
 		render(animate)
+
+		if previous ~= state and values.array ~= false then
+			runtime._array_pending[values.title or 'Toggle'] = state and nil or (os.clock() + 0.6)
+		end
 
 		if values.flag then
 			runtime._flags[values.flag] = state

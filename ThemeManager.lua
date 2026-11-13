@@ -7,7 +7,7 @@ local theme = {
 	_current = nil,
 	_order = {},
 	_palettes = {},
-	_bindings = {},
+	_bindings = setmetatable({}, { __mode = 'k' }),
 	_refreshers = {},
 	_persist = nil,
 }
