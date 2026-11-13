@@ -26,6 +26,7 @@ local text_service = _cloneref(game:GetService('TextService'))
 local http_service = _cloneref(game:GetService('HttpService'))
 local core_gui = _cloneref(game:GetService('CoreGui'))
 local debris = _cloneref(game:GetService('Debris'))
+local run_service = _cloneref(game:GetService('RunService'))
 
 local _new_instance = Instance.new
 local _new_tween_info = TweenInfo.new
@@ -450,6 +451,8 @@ function library:_init()
 	self._search = {}
 	self._toggles = {}
 	self._array_rows = {}
+	self._array_labels = {}
+	self._rainbow = false
 	self._notify_position = 'bottom-right' 
 
 	local sidebar = create_new('Frame', {
@@ -1486,6 +1489,7 @@ function library:_refresh_array()
 	end
 
 	_clear(runtime._array_rows)
+	_clear(runtime._array_labels)
 
 	local names = {}
 
@@ -1504,7 +1508,7 @@ function library:_refresh_array()
 		local row = create_new('Frame', {
 			AutomaticSize = Enum.AutomaticSize.X,
 			LayoutOrder = index,
-			Size = _new_udim2(0, 0, 0, 16),
+			Size = _new_udim2(0, 0, 0, 18),
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
 			ZIndex = 151,
@@ -1514,10 +1518,12 @@ function library:_refresh_array()
 		local label = create_label({
 			AutomaticSize = Enum.AutomaticSize.X,
 			Size = _new_udim2(0, 0, 1, 0),
+			Position = _new_udim2(0, -8, 0, 0),
 			Text = title,
 			TextRole = 'accent',
 			TextSize = runtime._label_size,
 			TextXAlignment = Enum.TextXAlignment.Left,
+			TextTransparency = 1,
 			ZIndex = 152,
 			Parent = row,
 		})
@@ -1535,7 +1541,18 @@ function library:_refresh_array()
 			Parent = label,
 		})
 
+		_create_tween(
+			tween_service,
+			label,
+			_new_tween_info(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.Out, 0, false, index * 0.03),
+			{
+				Position = _new_udim2(0, 0, 0, 0),
+				TextTransparency = 0,
+			}
+		):Play()
+
 		_insert(runtime._array_rows, row)
+		_insert(runtime._array_labels, label)
 	end
 end
 
@@ -1583,10 +1600,10 @@ function library:set_watermark(text)
 		LayoutOrder = 0,
 		FontFace = FONT_BOLD,
 		AutomaticSize = Enum.AutomaticSize.X,
-		Size = _new_udim2(0, 0, 0, 24),
+		Size = _new_udim2(0, 0, 0, 32),
 		Text = text,
 		TextRole = 'accent',
-		TextSize = runtime._label_size + 6,
+		TextSize = runtime._label_size + 10,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		ZIndex = 151,
 		Parent = root,
@@ -1640,6 +1657,35 @@ function library:set_watermark(text)
 	end)
 
 	library._refresh_array(runtime)
+
+	if not runtime._rainbow then
+		runtime._rainbow = true
+
+		watch(run_service.Heartbeat, function(delta)
+			if not runtime._watermark then
+				return
+			end
+
+			local hue, saturation, value = theme.color('accent'):ToHSV()
+			local shift = (os.clock() * 0.12) % 1
+
+			if runtime._watermark_header then
+				runtime._watermark_header.TextColor3 = Color3.fromHSV(
+					(hue + shift) % 1,
+					_max(saturation, 0.6),
+					_max(value, 0.9)
+				)
+			end
+
+			for index, label in runtime._array_labels do
+				label.TextColor3 = Color3.fromHSV(
+					(hue + shift + index * 0.045) % 1,
+					_max(saturation, 0.55),
+					_max(value, 0.85)
+				)
+			end
+		end)
+	end
 
 	return true
 end
