@@ -53,7 +53,10 @@ local _pcall = pcall
 local _tostring = tostring
 local _type = type
 
-local FONT = Font.new('rbxasset://fonts/families/GothamSSm.json', Enum.FontWeight.SemiBold, Enum.FontStyle.Normal)
+local FONT_FAMILY = 'rbxasset://fonts/families/GothamSSm.json'
+local FONT = Font.new(FONT_FAMILY, Enum.FontWeight.SemiBold, Enum.FontStyle.Normal)
+local FONT_BOLD = Font.new(FONT_FAMILY, Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+local FONT_REGULAR = Font.new(FONT_FAMILY, Enum.FontWeight.Regular, Enum.FontStyle.Normal)
 
 local WINDOW_WIDTH = 600
 local WINDOW_HEIGHT = 420
@@ -164,7 +167,7 @@ local create_label = LPH_NO_VIRTUALIZE(function(properties)
 	local role = properties.TextRole or 'text_dim'
 	properties.TextRole = nil
 	properties.BackgroundTransparency = 1
-	properties.FontFace = FONT
+	properties.FontFace = properties.FontFace or FONT_REGULAR
 	properties.BorderSizePixel = 0
 	properties.TextColor3 = properties.TextColor3 or theme.color(role)
 	local label = create_new('TextLabel', properties)
@@ -877,6 +880,7 @@ function library:create_tab(title, icon, order, category_name)
 
 	local title_label = create_label({
 		Position = _new_udim2(0, 34, 0, 0),
+		FontFace = FONT,
 		Size = _new_udim2(1, -44, 1, 0),
 		Text = title,
 		TextSize = runtime._label_size,
@@ -1019,6 +1023,7 @@ function library:create_tab(title, icon, order, category_name)
 
 		create_label({
 			LayoutOrder = 0,
+			FontFace = FONT_BOLD,
 			Size = _new_udim2(1, 0, 0, 12),
 			Text = string.upper(values.title),
 			TextSize = runtime._small_size + 1,
@@ -1576,6 +1581,7 @@ function library:set_watermark(text)
 
 	local header = create_label({
 		LayoutOrder = 0,
+		FontFace = FONT_BOLD,
 		AutomaticSize = Enum.AutomaticSize.X,
 		Size = _new_udim2(0, 0, 0, 24),
 		Text = text,
