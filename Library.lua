@@ -1312,7 +1312,7 @@ local function create_switch(parent, order, values, runtime)
 	})
 
 	local label = create_label({
-		Size = _new_udim2(1, key and -76 or -40, 1, 0),
+		Size = _new_udim2(1, key and -68 or -40, 1, 0),
 		Text = values.title or 'Toggle',
 		TextSize = runtime._label_size,
 		TextXAlignment = Enum.TextXAlignment.Left,
@@ -1351,12 +1351,12 @@ local function create_switch(parent, order, values, runtime)
 	if key then
 		chip = create_new('TextButton', {
 			AnchorPoint = _new_vector2(1, 0.5),
-			Position = _new_udim2(1, -38, 0.5, 0),
-			Size = _new_udim2(0, 0, 0, 18),
+			Position = _new_udim2(1, -36, 0.5, 0),
+			Size = _new_udim2(0, 18, 0, 18),
 			AutomaticSize = Enum.AutomaticSize.X,
 			FontFace = FONT,
 			Text = key.Name,
-			TextSize = runtime._small_size + 2,
+			TextSize = runtime._small_size + 1,
 			AutoButtonColor = false,
 			BorderSizePixel = 0,
 			ZIndex = 5,
@@ -1364,9 +1364,15 @@ local function create_switch(parent, order, values, runtime)
 		})
 
 		theme.paint(chip, 'BackgroundColor3', 'surface_alt')
-		theme.paint(chip, 'TextColor3', 'text_dim')
+		theme.paint(chip, 'TextColor3', 'text')
 		create_round(chip, 4)
-		create_padding(chip, 0, 0, 7, 7)
+		create_outline(chip)
+		create_padding(chip, 0, 0, 5, 5)
+
+		create_new('UISizeConstraint', {
+			MinSize = _new_vector2(18, 18),
+			Parent = chip,
+		})
 	end
 
 	local function render(animate)
