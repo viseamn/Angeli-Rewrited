@@ -407,8 +407,21 @@ function library:_init()
 
 	create_divider(logo_area, _new_udim2(0, 0, 1, -1), _new_udim2(1, 0, 0, 1))
 
+	local highlight = create_new('Frame', {
+		BackgroundTransparency = 1,
+		Size = _new_udim2(0, 0, 0, 0),
+		BorderSizePixel = 0,
+		ZIndex = 0,
+		Parent = sidebar,
+	})
+
+	theme.paint(highlight, 'BackgroundColor3', 'surface_alt')
+	create_round(highlight, 6)
+
+	self._highlight = highlight
+
 	local pin = create_new('Frame', {
-		Position = _new_udim2(0, 3, 0, 0),
+		Position = _new_udim2(0, 7, 0, 0),
 		Size = _new_udim2(0, 2, 0, 12),
 		BorderSizePixel = 0,
 		ZIndex = 50,
@@ -513,6 +526,7 @@ function library:_init()
 
 		_defer(function()
 			self:_move_pin()
+			self:_move_highlight(true)
 		end)
 	end)
 
@@ -622,7 +636,7 @@ function library:_move_pin()
 	local button = self._active_tab._button
 	local target = _new_udim2(
 		0,
-		3,
+		7,
 		0,
 		(button.AbsolutePosition.Y - self._sidebar.AbsolutePosition.Y + button.AbsoluteSize.Y / 2) / self._ui_scale - 6
 	)
@@ -637,6 +651,49 @@ function library:_move_pin()
 	):Play()
 end
 
+function library:_move_highlight(instant)
+	if not self._highlight or not self._active_tab then
+		return false
+	end
+
+	local button = self._active_tab._button
+	local size = button.AbsoluteSize
+
+	if size.Y <= 0 then
+		return false
+	end
+
+	local scale = self._ui_scale
+	local origin = self._sidebar.AbsolutePosition
+	local target_position = _new_udim2(
+		0,
+		(button.AbsolutePosition.X - origin.X) / scale,
+		0,
+		(button.AbsolutePosition.Y - origin.Y) / scale
+	)
+	local target_size = _new_udim2(0, size.X / scale, 0, size.Y / scale)
+
+	if instant then
+		self._highlight.Position = target_position
+		self._highlight.Size = target_size
+		self._highlight.BackgroundTransparency = 0
+		return true
+	end
+
+	_create_tween(
+		tween_service,
+		self._highlight,
+		_new_tween_info(0.32, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+		{
+			Position = target_position,
+			Size = target_size,
+			BackgroundTransparency = 0,
+		}
+	):Play()
+
+	return true
+end
+
 function library:set_open(state)
 	if state == self._ui_open then
 		return
@@ -646,19 +703,22 @@ function library:set_open(state)
 
 	if state then
 		container.Visible = true
-		_create_tween(tween_service, container, _new_tween_info(0.5, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+		_create_tween(tween_service, container, _new_tween_info(0.4, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
 			Size = _udim2_from_offset(WINDOW_WIDTH, WINDOW_HEIGHT),
 		}):Play()
+		_defer(function()
+			self:_move_highlight(true)
+		end)
 		return
 	end
 
 	self:close_all_dropdowns()
 
-	_create_tween(tween_service, container, _new_tween_info(0.5, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+	_create_tween(tween_service, container, _new_tween_info(0.32, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
 		Size = _new_udim2(0, 0, 0, 0),
 	}):Play()
 
-	_delay(0.5, function()
+	_delay(0.34, function()
 		if not self._ui_open then
 			container.Visible = false
 		end
@@ -917,11 +977,7 @@ function library:update_tabs(tab)
 		local active = data == tab
 		data._active = active
 
-		_create_tween(tween_service, data._button, _new_tween_info(0.35, Enum.EasingStyle.Quint), {
-			BackgroundTransparency = active and 0 or 1,
-		}):Play()
-
-		theme.paint(data._button, 'BackgroundColor3', 'surface_alt')
+		data._button.BackgroundTransparency = 1
 		theme.paint(data._label, 'TextColor3', active and 'text' or 'text_dim')
 		theme.paint(data._icon, 'ImageColor3', active and 'text' or 'text_dim')
 	end
@@ -929,8 +985,13 @@ function library:update_tabs(tab)
 	if tab then
 		self._pin.BackgroundTransparency = 0
 		self:_move_pin()
+		self:_move_highlight()
 		_defer(function()
 			self:_move_pin()
+
+			if not self._highlight_ready then
+				self._highlight_ready = self:_move_highlight(true)
+			end
 		end)
 	end
 end
