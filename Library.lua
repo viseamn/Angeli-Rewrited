@@ -330,6 +330,10 @@ library._new = function(runtime_type)
 
 	self:_init()
 	self:_init_keybinds()
+
+	theme.on_apply(function()
+		library._refresh_array(self)
+	end)
 	self:set_notify_position(self._notify_position, true)
 
 	if _type(state.themes) == 'table' then
@@ -1488,39 +1492,42 @@ function library:_refresh_array()
 
 	_sort(names)
 
+	local accent = theme.color('accent')
+	local hue, saturation, value = accent:ToHSV()
+
 	for index, title in names do
 		local row = create_new('Frame', {
 			AutomaticSize = Enum.AutomaticSize.X,
 			LayoutOrder = index,
-			Size = _new_udim2(0, 0, 0, 18),
+			Size = _new_udim2(0, 0, 0, 16),
+			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
-			BackgroundTransparency = 0.25,
-			ClipsDescendants = true,
 			ZIndex = 151,
 			Parent = runtime._watermark,
 		})
 
-		theme.paint(row, 'BackgroundColor3', 'surface')
-		create_padding(row, 0, 0, 9, 8)
-
-		local bar = create_new('Frame', {
-			Size = _new_udim2(0, 2, 1, 0),
-			BorderSizePixel = 0,
+		local label = create_label({
+			AutomaticSize = Enum.AutomaticSize.X,
+			Size = _new_udim2(0, 0, 1, 0),
+			Text = title,
+			TextRole = 'accent',
+			TextSize = runtime._label_size,
+			TextXAlignment = Enum.TextXAlignment.Left,
 			ZIndex = 152,
 			Parent = row,
 		})
 
-		theme.paint(bar, 'BackgroundColor3', 'accent')
+		label.TextColor3 = Color3.fromHSV(
+			(hue + index * 0.045) % 1,
+			_max(saturation, 0.55),
+			_max(value, 0.85)
+		)
 
-		create_label({
-			AutomaticSize = Enum.AutomaticSize.X,
-			Size = _new_udim2(0, 0, 1, 0),
-			Text = title,
-			TextRole = 'text',
-			TextSize = runtime._small_size + 2,
-			TextXAlignment = Enum.TextXAlignment.Left,
-			ZIndex = 152,
-			Parent = row,
+		create_new('UIStroke', {
+			Thickness = 1,
+			Color = Color3.fromRGB(0, 0, 0),
+			Transparency = 0.45,
+			Parent = label,
 		})
 
 		_insert(runtime._array_rows, row)
@@ -1563,20 +1570,27 @@ function library:set_watermark(text)
 		FillDirection = Enum.FillDirection.Vertical,
 		HorizontalAlignment = Enum.HorizontalAlignment.Left,
 		SortOrder = Enum.SortOrder.LayoutOrder,
-		Padding = _new_udim(0, 1),
+		Padding = _new_udim(0, 0),
 		Parent = root,
 	})
 
 	local header = create_label({
 		LayoutOrder = 0,
 		AutomaticSize = Enum.AutomaticSize.X,
-		Size = _new_udim2(0, 0, 0, 22),
+		Size = _new_udim2(0, 0, 0, 24),
 		Text = text,
 		TextRole = 'accent',
-		TextSize = runtime._label_size + 3,
+		TextSize = runtime._label_size + 6,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		ZIndex = 151,
 		Parent = root,
+	})
+
+	create_new('UIStroke', {
+		Thickness = 1,
+		Color = Color3.fromRGB(0, 0, 0),
+		Transparency = 0.4,
+		Parent = header,
 	})
 
 	runtime._watermark = root
