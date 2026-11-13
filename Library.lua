@@ -441,6 +441,8 @@ function library:_init()
 	self._notification_order = 0
 	self._notifications = {}
 	self._search = {}
+	self._toggles = {}
+	self._array_rows = {}
 	self._notify_position = 'bottom-right' 
 
 	local sidebar = create_new('Frame', {
@@ -1461,6 +1463,73 @@ function library:open_palette()
 	return true
 end
 
+function library:_refresh_array()
+	local runtime = resolve_runtime(self)
+
+	if not runtime or not runtime._watermark then
+		return
+	end
+
+	for _, row in runtime._array_rows do
+		if row.Parent then
+			row:Destroy()
+		end
+	end
+
+	_clear(runtime._array_rows)
+
+	local names = {}
+
+	for _, entry in runtime._toggles do
+		if entry.get() then
+			_insert(names, entry.title)
+		end
+	end
+
+	_sort(names)
+
+	for index, title in names do
+		local row = create_new('Frame', {
+			AutomaticSize = Enum.AutomaticSize.X,
+			LayoutOrder = index,
+			Size = _new_udim2(0, 0, 0, 18),
+			BorderSizePixel = 0,
+			BackgroundTransparency = 0.15,
+			ClipsDescendants = true,
+			ZIndex = 151,
+			Parent = runtime._watermark,
+		})
+
+		theme.paint(row, 'BackgroundColor3', 'surface')
+		create_round(row, 3)
+		create_padding(row, 0, 0, 8, 8)
+
+		create_label({
+			AutomaticSize = Enum.AutomaticSize.X,
+			Size = _new_udim2(0, 0, 1, 0),
+			Text = title,
+			TextRole = 'text',
+			TextSize = runtime._small_size + 2,
+			TextXAlignment = Enum.TextXAlignment.Right,
+			ZIndex = 152,
+			Parent = row,
+		})
+
+		local bar = create_new('Frame', {
+			AnchorPoint = _new_vector2(1, 0.5),
+			Position = _new_udim2(1, 0, 0.5, 0),
+			Size = _new_udim2(0, 2, 1, 0),
+			BorderSizePixel = 0,
+			ZIndex = 152,
+			Parent = row,
+		})
+
+		theme.paint(bar, 'BackgroundColor3', 'accent')
+
+		_insert(runtime._array_rows, row)
+	end
+end
+
 function library:set_watermark(text)
 	local runtime = resolve_runtime(self)
 
@@ -1473,37 +1542,58 @@ function library:set_watermark(text)
 		runtime._watermark = nil
 	end
 
+	_clear(runtime._array_rows)
+
 	text = trim(text)
 
 	if text == '' then
 		return true
 	end
 
-	local label = create_label({
+	local root = create_new('Frame', {
 		Name = '_watermark',
-		AnchorPoint = _new_vector2(0, 1),
-		Position = _new_udim2(0, 12, 1, -12),
-		AutomaticSize = Enum.AutomaticSize.X,
-		Size = _new_udim2(0, 0, 0, 20),
-		Text = text,
-		TextRole = 'text',
-		TextSize = runtime._label_size,
-		TextTransparency = 0.25,
+		AnchorPoint = _new_vector2(1, 0),
+		Position = _new_udim2(1, -10, 0, 64),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Size = _new_udim2(0, 0, 0, 0),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
 		ZIndex = 150,
 		Parent = runtime._notify_gui,
 	})
 
-	runtime._watermark = label
+	create_new('UIListLayout', {
+		FillDirection = Enum.FillDirection.Vertical,
+		HorizontalAlignment = Enum.HorizontalAlignment.Right,
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Padding = _new_udim(0, 2),
+		Parent = root,
+	})
+
+	local header = create_label({
+		LayoutOrder = 0,
+		AutomaticSize = Enum.AutomaticSize.X,
+		Size = _new_udim2(0, 0, 0, 20),
+		Text = text,
+		TextRole = 'text',
+		TextSize = runtime._label_size + 2,
+		TextXAlignment = Enum.TextXAlignment.Right,
+		ZIndex = 151,
+		Parent = root,
+	})
+
+	runtime._watermark = root
+	runtime._watermark_header = header
 
 	local dragging = false
 	local start = nil
 	local origin = nil
 
-	label.InputBegan:Connect(function(input)
+	header.InputBegan:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 			dragging = true
 			start = input.Position
-			origin = label.Position
+			origin = root.Position
 		end
 	end)
 
@@ -1518,7 +1608,7 @@ function library:set_watermark(text)
 
 		local delta = input.Position - start
 
-		label.Position = _new_udim2(
+		root.Position = _new_udim2(
 			origin.X.Scale,
 			origin.X.Offset + delta.X,
 			origin.Y.Scale,
@@ -1531,6 +1621,8 @@ function library:set_watermark(text)
 			dragging = false
 		end
 	end)
+
+	library._refresh_array(runtime)
 
 	return true
 end
@@ -2032,6 +2124,8 @@ local function create_switch(parent, order, values, runtime)
 				warn(`[Angeli] toggle callback failed: {_tostring(err)}`)
 			end
 		end
+
+		library._refresh_array(runtime)
 	end
 
 	local function set_key(next_key)
@@ -2177,6 +2271,15 @@ local function create_switch(parent, order, values, runtime)
 	end
 
 	attach_tooltip(runtime, row, values.desc)
+
+	if values.array ~= false then
+		_insert(runtime._toggles, {
+			title = values.title or 'Toggle',
+			get = function()
+				return state
+			end,
+		})
+	end
 
 	return {
 		set = set_value,
