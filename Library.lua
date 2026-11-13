@@ -1273,8 +1273,36 @@ function library:register_keybind(flag, title, key_name)
 	self:refresh_keybinds()
 end
 
+local function resolve_key(value)
+	if _type(value) == 'string' then
+		local ok, resolved = _pcall(function()
+			return Enum.KeyCode[value]
+		end)
+		if ok and resolved then
+			return resolved
+		end
+		return nil
+	end
+
+	if value and value.Name and value.EnumType then
+		return value
+	end
+
+	return nil
+end
+
 local function create_switch(parent, order, values, runtime)
 	local state = values.default == true
+	local key_flag = values.keybind_flag or (values.flag and `{values.flag}_key`)
+	local key = nil
+
+	if values.keybind then
+		key = resolve_key(values.keybind == true and (values.key or Enum.KeyCode.F) or values.keybind)
+
+		if key_flag and _type(runtime._flags[key_flag]) == 'string' then
+			key = resolve_key(runtime._flags[key_flag]) or key
+		end
+	end
 
 	local row = create_new('Frame', {
 		BackgroundTransparency = 1,
@@ -1284,7 +1312,7 @@ local function create_switch(parent, order, values, runtime)
 	})
 
 	local label = create_label({
-		Size = _new_udim2(1, -40, 1, 0),
+		Size = _new_udim2(1, key and -76 or -40, 1, 0),
 		Text = values.title or 'Toggle',
 		TextSize = runtime._label_size,
 		TextXAlignment = Enum.TextXAlignment.Left,
@@ -1315,6 +1343,31 @@ local function create_switch(parent, order, values, runtime)
 	})
 
 	create_pill(knob)
+
+	local chip = nil
+	local picking = false
+	local holding = false
+
+	if key then
+		chip = create_new('TextButton', {
+			AnchorPoint = _new_vector2(1, 0.5),
+			Position = _new_udim2(1, -38, 0.5, 0),
+			Size = _new_udim2(0, 0, 0, 18),
+			AutomaticSize = Enum.AutomaticSize.X,
+			FontFace = FONT,
+			Text = key.Name,
+			TextSize = runtime._small_size + 2,
+			AutoButtonColor = false,
+			BorderSizePixel = 0,
+			ZIndex = 5,
+			Parent = row,
+		})
+
+		theme.paint(chip, 'BackgroundColor3', 'surface_alt')
+		theme.paint(chip, 'TextColor3', 'text_dim')
+		create_round(chip, 4)
+		create_padding(chip, 0, 0, 7, 7)
+	end
 
 	local function render(animate)
 		theme.paint(track, 'BackgroundColor3', state and 'accent' or 'surface_alt')
@@ -1348,16 +1401,84 @@ local function create_switch(parent, order, values, runtime)
 		end
 	end
 
+	local function set_key(next_key)
+		key = next_key
+
+		if chip then
+			chip.Text = next_key.Name
+		end
+
+		if key_flag then
+			runtime._flags[key_flag] = next_key.Name
+			library._save(runtime)
+		end
+
+		for _, entry in runtime._keybind_entries do
+			if entry.flag == key_flag then
+				entry.key_name = next_key.Name
+				break
+			end
+		end
+
+		library.refresh_keybinds(runtime)
+	end
+
 	local click = create_new('TextButton', {
 		BackgroundTransparency = 1,
 		Size = _new_udim2(1, 0, 1, 0),
 		Text = '',
+		ZIndex = 1,
 		Parent = row,
 	})
 
 	click.MouseButton1Click:Connect(function()
 		set_value(not state, true)
 	end)
+
+	if chip then
+		chip.MouseButton1Click:Connect(function()
+			picking = true
+			chip.Text = '...'
+		end)
+
+		user_input_service.InputBegan:Connect(function(input, processed)
+			if picking then
+				if input.UserInputType == Enum.UserInputType.Keyboard then
+					picking = false
+					set_key(input.KeyCode)
+				end
+				return
+			end
+
+			if processed or not key or input.KeyCode ~= key then
+				return
+			end
+
+			local mode = values.keybind_mode or 'Toggle'
+
+			if mode == 'Hold' then
+				holding = true
+				set_value(true, true)
+			elseif mode == 'Press' then
+				if values.keybind_callback then
+					_pcall(values.keybind_callback)
+				end
+			else
+				set_value(not state, true)
+			end
+		end)
+
+		user_input_service.InputEnded:Connect(function(input)
+			if holding and input.KeyCode == key then
+				holding = false
+				set_value(false, true)
+			end
+		end)
+
+		if key_flag and values.keybind_list ~= false then
+			library.register_keybind(runtime, key_flag, values.title or 'Toggle', key.Name)
+		end
+	end
 
 	render(false)
 
@@ -1380,6 +1501,9 @@ local function create_switch(parent, order, values, runtime)
 		set = set_value,
 		get = function()
 			return state
+		end,
+		get_key = function()
+			return key
 		end,
 	}
 end
@@ -2163,6 +2287,361 @@ local function create_keybind(parent, order, values, runtime)
 	}
 end
 
+local function to_hex(color)
+	local r = _floor(color.R * 255 + 0.5)
+	local g = _floor(color.G * 255 + 0.5)
+	local b = _floor(color.B * 255 + 0.5)
+
+	return string.format('#%02X%02X%02X', r, g, b)
+end
+
+local function from_hex(text)
+	local r, g, b = string.match(_tostring(text or ''), '^#?(%x%x)(%x%x)(%x%x)$')
+
+	if not r then
+		return nil
+	end
+
+	return Color3.fromRGB(tonumber(r, 16), tonumber(g, 16), tonumber(b, 16))
+end
+
+local function create_colorpicker(parent, order, values, runtime)
+	local color = values.default or Color3.fromRGB(255, 255, 255)
+
+	if values.flag and _type(runtime._flags[values.flag]) == 'string' then
+		color = from_hex(runtime._flags[values.flag]) or color
+	end
+
+	local h, s, v = color:ToHSV()
+
+	local frame = create_new('Frame', {
+		BackgroundTransparency = 1,
+		LayoutOrder = order,
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Size = _new_udim2(1, 0, 0, 26),
+		Parent = parent,
+	})
+
+	local header = create_new('Frame', {
+		BackgroundTransparency = 1,
+		Size = _new_udim2(1, 0, 0, 26),
+		Parent = frame,
+	})
+
+	create_label({
+		Size = _new_udim2(1, -40, 1, 0),
+		Text = values.title or 'Color',
+		TextSize = runtime._label_size,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		Parent = header,
+	})
+
+	local swatch = create_new('TextButton', {
+		AnchorPoint = _new_vector2(1, 0.5),
+		Position = _new_udim2(1, 0, 0.5, 0),
+		Size = _new_udim2(0, 30, 0, 18),
+		Text = '',
+		AutoButtonColor = false,
+		BorderSizePixel = 0,
+		Parent = header,
+	})
+
+	create_round(swatch, 4)
+	create_outline(swatch)
+
+	local panel = create_new('Frame', {
+		BackgroundTransparency = 1,
+		Position = _new_udim2(0, 0, 0, 26),
+		Size = _new_udim2(1, 0, 0, 0),
+		ClipsDescendants = true,
+		Parent = frame,
+	})
+
+	local sv = create_new('Frame', {
+		Size = _new_udim2(1, 0, 0, 96),
+		BorderSizePixel = 0,
+		ClipsDescendants = true,
+		Parent = panel,
+	})
+
+	create_round(sv, 4)
+
+	local white_layer = create_new('Frame', {
+		Size = _new_udim2(1, 0, 1, 0),
+		BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+		BorderSizePixel = 0,
+		Parent = sv,
+	})
+
+	create_new('UIGradient', {
+		Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0),
+			NumberSequenceKeypoint.new(1, 1),
+		}),
+		Parent = white_layer,
+	})
+
+	local black_layer = create_new('Frame', {
+		Size = _new_udim2(1, 0, 1, 0),
+		BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+		BorderSizePixel = 0,
+		Parent = sv,
+	})
+
+	create_new('UIGradient', {
+		Rotation = 90,
+		Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 1),
+			NumberSequenceKeypoint.new(1, 0),
+		}),
+		Parent = black_layer,
+	})
+
+	local sv_marker = create_new('Frame', {
+		AnchorPoint = _new_vector2(0.5, 0.5),
+		Size = _new_udim2(0, 10, 0, 10),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Parent = sv,
+	})
+
+	create_pill(sv_marker)
+
+	create_new('UIStroke', {
+		Thickness = 2,
+		Color = Color3.fromRGB(255, 255, 255),
+		Parent = sv_marker,
+	})
+
+	local hue_bar = create_new('Frame', {
+		Position = _new_udim2(0, 0, 0, 104),
+		Size = _new_udim2(1, 0, 0, 10),
+		BorderSizePixel = 0,
+		ClipsDescendants = true,
+		Parent = panel,
+	})
+
+	create_pill(hue_bar)
+
+	local hue_fill = create_new('Frame', {
+		Size = _new_udim2(1, 0, 1, 0),
+		BorderSizePixel = 0,
+		Parent = hue_bar,
+	})
+
+	create_new('UIGradient', {
+		Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 0, 0)),
+			ColorSequenceKeypoint.new(1 / 6, Color3.fromRGB(255, 255, 0)),
+			ColorSequenceKeypoint.new(2 / 6, Color3.fromRGB(0, 255, 0)),
+			ColorSequenceKeypoint.new(3 / 6, Color3.fromRGB(0, 255, 255)),
+			ColorSequenceKeypoint.new(4 / 6, Color3.fromRGB(0, 0, 255)),
+			ColorSequenceKeypoint.new(5 / 6, Color3.fromRGB(255, 0, 255)),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 0, 0)),
+		}),
+		Parent = hue_fill,
+	})
+
+	local hue_marker = create_new('Frame', {
+		AnchorPoint = _new_vector2(0.5, 0.5),
+		Position = _new_udim2(h, 0, 0.5, 0),
+		Size = _new_udim2(0, 3, 0, 16),
+		BorderSizePixel = 0,
+		Parent = hue_bar,
+	})
+
+	create_new('UIStroke', {
+		Thickness = 1,
+		Color = Color3.fromRGB(255, 255, 255),
+		Parent = hue_marker,
+	})
+
+	create_pill(hue_marker)
+
+	local hex_box = create_new('TextBox', {
+		Position = _new_udim2(0, 0, 0, 122),
+		Size = _new_udim2(1, 0, 0, 24),
+		ClearTextOnFocus = false,
+		FontFace = FONT,
+		PlaceholderText = '#FFFFFF',
+		Text = to_hex(color),
+		TextSize = runtime._label_size,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		BorderSizePixel = 0,
+		Parent = panel,
+	})
+
+	theme.paint(hex_box, 'BackgroundColor3', 'surface_alt')
+	theme.paint(hex_box, 'TextColor3', 'text')
+	create_round(hex_box, 6)
+
+	local open = false
+	local dragging = nil
+	local syncing = false
+
+	local function apply(commit, silent, quiet)
+		color = Color3.fromHSV(h, s, v)
+
+		sv.BackgroundColor3 = Color3.fromHSV(h, 1, 1)
+		sv_marker.Position = _new_udim2(s, 0, 1 - v, 0)
+		hue_marker.Position = _new_udim2(h, 0, 0.5, 0)
+		swatch.BackgroundColor3 = color
+
+		syncing = true
+		hex_box.Text = to_hex(color)
+		syncing = false
+
+		if not commit then
+			return
+		end
+
+		if values.flag then
+			runtime._flags[values.flag] = to_hex(color)
+			if not silent then
+				library._save(runtime)
+			end
+		end
+
+		if values.callback and not quiet then
+			local ok, err = _pcall(values.callback, color)
+			if not ok then
+				warn(`[Angeli] colorpicker callback failed: {_tostring(err)}`)
+			end
+		end
+	end
+
+	local function set_color(next_color, commit, silent, quiet)
+		h, s, v = next_color:ToHSV()
+		apply(commit, silent, quiet)
+	end
+
+	local function toggle_panel(state)
+		local target = state
+		if target == nil then
+			target = not open
+		end
+		if target == open then
+			return
+		end
+
+		open = target
+
+		_create_tween(tween_service, panel, _new_tween_info(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+			Size = _new_udim2(1, 0, 0, target and 150 or 0),
+		}):Play()
+	end
+
+	swatch.MouseButton1Click:Connect(function()
+		toggle_panel()
+	end)
+
+	local function drag_sv(input)
+		local size = sv.AbsoluteSize
+		if size.X <= 0 or size.Y <= 0 then
+			return
+		end
+
+		s = _clamp((input.Position.X - sv.AbsolutePosition.X) / size.X, 0, 1)
+		v = 1 - _clamp((input.Position.Y - sv.AbsolutePosition.Y) / size.Y, 0, 1)
+		apply(true)
+	end
+
+	local function drag_hue(input)
+		local size = hue_bar.AbsoluteSize
+		if size.X <= 0 then
+			return
+		end
+
+		h = _clamp((input.Position.X - hue_bar.AbsolutePosition.X) / size.X, 0, 1)
+		apply(true)
+	end
+
+	sv.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = 'sv'
+			drag_sv(input)
+		end
+	end)
+
+	hue_bar.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = 'hue'
+			drag_hue(input)
+		end
+	end)
+
+	user_input_service.InputChanged:Connect(function(input)
+		if not dragging then
+			return
+		end
+
+		if input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch then
+			return
+		end
+
+		if dragging == 'sv' then
+			drag_sv(input)
+		else
+			drag_hue(input)
+		end
+	end)
+
+	user_input_service.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = nil
+		end
+	end)
+
+	hex_box.FocusLost:Connect(function()
+		if syncing then
+			return
+		end
+
+		local parsed = from_hex(hex_box.Text)
+
+		if parsed then
+			set_color(parsed, true)
+		else
+			hex_box.Text = to_hex(color)
+		end
+	end)
+
+	hex_box:GetPropertyChangedSignal('Text'):Connect(function()
+		if syncing then
+			return
+		end
+
+		local parsed = from_hex(hex_box.Text)
+		if parsed then
+			set_color(parsed, false)
+		end
+	end)
+
+	apply(false)
+
+	if values.flag then
+		library._bind(runtime, values.flag, function(value)
+			local parsed = from_hex(value)
+			if parsed then
+				set_color(parsed, false, true, true)
+			end
+		end)
+	end
+
+	return {
+		get = function()
+			return color
+		end,
+		set = function(next_color)
+			set_color(next_color, true)
+		end,
+		open = function()
+			toggle_panel(true)
+		end,
+	}
+end
+
 group_methods = {}
 
 function group_methods:create_toggle(flag, values)
@@ -2211,6 +2690,16 @@ function group_methods:create_textbox(flag, values)
 	values = values or {}
 	values.flag = flag
 	return create_textbox(self._frame, self:_next_order(), values, self._runtime)
+end
+
+function group_methods:create_colorpicker(flag, values)
+	if _type(flag) == 'table' then
+		values = flag
+		flag = values.flag
+	end
+	values = values or {}
+	values.flag = flag
+	return create_colorpicker(self._frame, self:_next_order(), values, self._runtime)
 end
 
 function group_methods:create_keybind(flag, values)
