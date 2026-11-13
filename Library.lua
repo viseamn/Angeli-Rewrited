@@ -1,0 +1,2177 @@
+if not LPH_OBFUSCATED then
+	LPH_ENCFUNC = function(callback)
+		return callback
+	end
+	LPH_NO_VIRTUALIZE = function(...)
+		return ...
+	end
+	LPH_NO_UPVALUES = function(...)
+		return ...
+	end
+	LPH_JIT_MAX = function(...)
+		return ...
+	end
+	LPH_JIT = function(...)
+		return ...
+	end
+end
+
+local _cloneref = type(cloneref) == 'function' and cloneref or function(value)
+	return value
+end
+
+local user_input_service = _cloneref(game:GetService('UserInputService'))
+local tween_service = _cloneref(game:GetService('TweenService'))
+local text_service = _cloneref(game:GetService('TextService'))
+local http_service = _cloneref(game:GetService('HttpService'))
+local core_gui = _cloneref(game:GetService('CoreGui'))
+local debris = _cloneref(game:GetService('Debris'))
+
+local _new_instance = Instance.new
+local _new_tween_info = TweenInfo.new
+local _new_udim = UDim.new
+local _new_udim2 = UDim2.new
+local _udim2_from_offset = UDim2.fromOffset
+local _new_vector2 = Vector2.new
+
+local _clamp = math.clamp
+local _floor = math.floor
+local _max = math.max
+local _min = math.min
+
+local _clear = table.clear
+local _find = table.find
+local _insert = table.insert
+local _sort = table.sort
+
+local _defer = task.defer
+local _delay = task.delay
+local _create_tween = tween_service.Create
+
+local _pairs = pairs
+local _pcall = pcall
+local _tostring = tostring
+local _type = type
+
+local FONT = Font.new('rbxasset://fonts/families/GothamSSm.json', Enum.FontWeight.SemiBold, Enum.FontStyle.Normal)
+
+local WINDOW_WIDTH = 600
+local WINDOW_HEIGHT = 420
+local SIDEBAR_WIDTH = 160
+local ROW_HEIGHT = 24
+
+local theme
+local save_manager
+
+local column_base = setmetatable({}, { __mode = 'k' })
+
+local function normalize_name(value)
+	local text = string.lower(_tostring(value or ''))
+	text = string.gsub(text, '^%s+', '')
+	return string.gsub(text, '%s+$', '')
+end
+
+local function trim(value)
+	local text = _tostring(value or '')
+	text = string.gsub(text, '^%s+', '')
+	return string.gsub(text, '%s+$', '')
+end
+
+local function shallow_copy(source)
+	local copy = {}
+	for index, value in source or {} do
+		copy[index] = value
+	end
+	return copy
+end
+
+local create_new = LPH_NO_VIRTUALIZE(function(class_name, properties)
+	local instance = _new_instance(class_name)
+	for property, value in properties do
+		if property ~= 'Parent' then
+			instance[property] = value
+		end
+	end
+	instance.Parent = properties.Parent
+	return instance
+end)
+
+local create_round = LPH_NO_VIRTUALIZE(function(instance, radius)
+	return create_new('UICorner', {
+		CornerRadius = _new_udim(0, radius),
+		Parent = instance,
+	})
+end)
+
+local create_pill = LPH_NO_VIRTUALIZE(function(instance)
+	return create_new('UICorner', {
+		CornerRadius = _new_udim(1, 0),
+		Parent = instance,
+	})
+end)
+
+local create_outline = LPH_NO_VIRTUALIZE(function(instance, refresh)
+	local stroke = create_new('UIStroke', {
+		Thickness = 1,
+		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+		Parent = instance,
+	})
+	theme.paint(stroke, 'Color', 'stroke')
+	if refresh then
+		instance:GetPropertyChangedSignal('AbsoluteSize'):Connect(function()
+			stroke.Enabled = false
+			stroke.Enabled = true
+		end)
+	end
+	return stroke
+end)
+
+local create_list = LPH_NO_VIRTUALIZE(function(instance, gap)
+	return create_new('UIListLayout', {
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Padding = _new_udim(0, gap or 0),
+		Parent = instance,
+	})
+end)
+
+local create_padding = LPH_NO_VIRTUALIZE(function(instance, top, bottom, left, right)
+	return create_new('UIPadding', {
+		PaddingTop = _new_udim(0, top),
+		PaddingBottom = _new_udim(0, bottom),
+		PaddingLeft = _new_udim(0, left),
+		PaddingRight = _new_udim(0, right),
+		Parent = instance,
+	})
+end)
+
+local create_label = LPH_NO_VIRTUALIZE(function(properties)
+	local role = properties.TextRole or 'text_dim'
+	properties.TextRole = nil
+	properties.BackgroundTransparency = 1
+	properties.FontFace = FONT
+	properties.BorderSizePixel = 0
+	properties.TextColor3 = properties.TextColor3 or theme.color(role)
+	local label = create_new('TextLabel', properties)
+	theme.paint(label, 'TextColor3', role)
+	return label
+end)
+
+local create_divider = LPH_NO_VIRTUALIZE(function(parent, position, size)
+	local divider = create_new('Frame', {
+		Position = position,
+		Size = size,
+		BorderSizePixel = 0,
+		Parent = parent,
+	})
+	theme.paint(divider, 'BackgroundColor3', 'stroke')
+	return divider
+end)
+
+local create_scroller = LPH_NO_VIRTUALIZE(function(parent, position, size)
+	local frame = create_new('ScrollingFrame', {
+		BackgroundTransparency = 1,
+		Position = position,
+		Size = size,
+		CanvasSize = _new_udim2(0, 0, 0, 0),
+		AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		ScrollBarThickness = 0,
+		ScrollBarImageTransparency = 1,
+		VerticalScrollBarInset = Enum.ScrollBarInset.None,
+		HorizontalScrollBarInset = Enum.ScrollBarInset.None,
+		BorderSizePixel = 0,
+		ClipsDescendants = true,
+		Parent = parent,
+	})
+	return frame
+end)
+
+library = {
+	_flags = {},
+	_controls = {},
+	_dropdowns = {},
+	_current = nil,
+}
+
+library.__index = library
+
+function library.attach(theme_module, save_module)
+	theme = theme_module
+	save_manager = save_module
+end
+
+local interface_parent = (gethui and gethui()) or core_gui
+local previous = interface_parent:FindFirstChild('_angeli')
+
+if previous then
+	debris:AddItem(previous, 0)
+end
+
+function library:_persist_state()
+	save_manager.write_state({
+		profile = save_manager._active,
+		theme = theme.current(),
+		autosave = save_manager._autosave,
+	})
+end
+
+function library:_save()
+	if not save_manager._autosave then
+		save_manager._dirty = true
+		return
+	end
+	save_manager.save(save_manager._active, true)
+end
+
+function library:_bind(flag, sync)
+	if _type(flag) ~= 'string' then
+		return
+	end
+	_insert(self._controls, {
+		flag = flag,
+		sync = sync,
+	})
+end
+
+function library:_sync_controls()
+	for _, control in self._controls do
+		local value = self._flags[control.flag]
+		if value ~= nil then
+			_pcall(control.sync, value)
+		end
+	end
+end
+
+function library:_apply_flags(values)
+	_clear(self._flags)
+	for key, value in _pairs(values) do
+		self._flags[key] = value
+	end
+	self:_sync_controls()
+end
+
+function library:close_all_dropdowns()
+	for _, dropdown in self._dropdowns do
+		if dropdown._open then
+			dropdown:unfold(false)
+		end
+	end
+end
+
+local function resolve_runtime(self)
+	if self ~= library and _type(self) == 'table' and self._tabs then
+		return self
+	end
+	return library._current
+end
+
+library._new = function(runtime_type)
+	local is_mobile = user_input_service.TouchEnabled
+		or not (user_input_service.KeyboardEnabled and user_input_service.MouseEnabled)
+	local state = save_manager.state()
+
+	local self = setmetatable({
+		_tabs = {},
+		_tab_registry = {},
+		_categories = {},
+		_category_registry = {},
+		_active_tab = nil,
+		_layout_order = 0,
+		_category_order = 0,
+		_type = runtime_type,
+		_flags = library._flags,
+		_controls = library._controls,
+		_dropdowns = {},
+		_keybind_entries = {},
+		_keybind_visible = false,
+		_is_mobile = is_mobile,
+		_ui_scale = 1,
+		_label_size = is_mobile and 15 or 14,
+		_small_size = is_mobile and 11 or 10,
+		_ui_open = true,
+		_dragging = false,
+	}, library)
+
+	library._current = self
+
+	if _type(state.autosave) == 'boolean' then
+		save_manager._autosave = state.autosave
+	end
+
+	if _type(state.profile) == 'string' and state.profile ~= '' then
+		save_manager._active = state.profile
+	end
+
+	self:_init()
+	self:_init_keybinds()
+
+	if _type(state.theme) == 'string' and theme._palettes[state.theme] then
+		theme.apply(state.theme, false)
+	end
+
+	return self
+end
+
+function library:_init()
+	if _type(set_thread_identity) == 'function' then
+		_pcall(set_thread_identity, 6)
+	end
+
+	local gui = create_new('ScreenGui', {
+		Name = '_angeli',
+		ResetOnSpawn = false,
+		IgnoreGuiInset = false,
+		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+		Parent = interface_parent,
+	})
+
+	if syn and syn.protect_gui then
+		syn.protect_gui(gui)
+	end
+
+	self._ui = gui
+
+	local container = create_new('Frame', {
+		AnchorPoint = _new_vector2(0.5, 0.5),
+		Position = _new_udim2(0.5, 0, 0.5, 0),
+		Size = _new_udim2(0, 0, 0, 0),
+		BorderSizePixel = 0,
+		ClipsDescendants = true,
+		Active = true,
+		Parent = gui,
+	})
+
+	theme.paint(container, 'BackgroundColor3', 'bg')
+	create_round(container, 8)
+	create_outline(container)
+
+	_create_tween(tween_service, container, _new_tween_info(0.5, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+		Size = _udim2_from_offset(WINDOW_WIDTH, WINDOW_HEIGHT),
+	}):Play()
+
+	local scale_object = create_new('UIScale', {
+		Parent = container,
+	})
+
+	self._scale_object = scale_object
+
+	local notification_holder = create_new('Frame', {
+		Name = '_notifications',
+		BackgroundTransparency = 1,
+		AnchorPoint = _new_vector2(0.5, 1),
+		Position = _new_udim2(0.5, 0, 0.5, 178),
+		Size = _new_udim2(0, 560, 0, 180),
+		BorderSizePixel = 0,
+		ZIndex = 199,
+		Parent = gui,
+	})
+
+	create_new('UIListLayout', {
+		FillDirection = Enum.FillDirection.Vertical,
+		HorizontalAlignment = Enum.HorizontalAlignment.Center,
+		VerticalAlignment = Enum.VerticalAlignment.Bottom,
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Padding = _new_udim(0, 6),
+		Parent = notification_holder,
+	})
+
+	self._notification_holder = notification_holder
+	self._notification_scale = create_new('UIScale', { Parent = notification_holder })
+	self._notification_order = 0
+
+	local sidebar = create_new('Frame', {
+		BackgroundTransparency = 1,
+		Size = _new_udim2(0, SIDEBAR_WIDTH, 1, 0),
+		Parent = container,
+	})
+
+	create_divider(sidebar, _new_udim2(1, -1, 0, 48), _new_udim2(0, 1, 1, -48))
+
+	local logo_area = create_new('Frame', {
+		BackgroundTransparency = 1,
+		Size = _new_udim2(1, 0, 0, 48),
+		Parent = sidebar,
+	})
+
+	create_label({
+		Position = _new_udim2(0, 20, 0, 0),
+		Size = _new_udim2(1, -30, 1, 0),
+		Text = 'Angeli',
+		TextRole = 'text',
+		TextSize = self._is_mobile and 18 or 17,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Parent = logo_area,
+	})
+
+	create_divider(logo_area, _new_udim2(0, 0, 1, -1), _new_udim2(1, 0, 0, 1))
+
+	local pin = create_new('Frame', {
+		Position = _new_udim2(0, 10, 0, 0),
+		Size = _new_udim2(0, 3, 0, 14),
+		BorderSizePixel = 0,
+		ZIndex = 50,
+		Parent = sidebar,
+	})
+
+	theme.paint(pin, 'BackgroundColor3', 'accent')
+	create_pill(pin)
+
+	local tabs_container = create_scroller(sidebar, _new_udim2(0, 0, 0, 48), _new_udim2(1, 0, 1, -48))
+	create_padding(tabs_container, 6, 16, 10, 10)
+	create_list(tabs_container, 6)
+
+	local content = create_new('Frame', {
+		BackgroundTransparency = 1,
+		Position = _new_udim2(0, SIDEBAR_WIDTH, 0, 0),
+		Size = _new_udim2(0, WINDOW_WIDTH - SIDEBAR_WIDTH, 1, 0),
+		Parent = container,
+	})
+
+	local topbar = create_new('Frame', {
+		BackgroundTransparency = 1,
+		Size = _new_udim2(1, 0, 0, 48),
+		ZIndex = 5,
+		Parent = content,
+	})
+
+	local topbar_divider = create_divider(topbar, _new_udim2(0, 0, 1, -1), _new_udim2(1, 0, 0, 1))
+	topbar_divider.ZIndex = 6
+
+	local sections_viewport = create_new('Frame', {
+		BackgroundTransparency = 1,
+		Position = _new_udim2(0, 0, 0, 48),
+		Size = _new_udim2(1, 0, 1, -48),
+		ClipsDescendants = true,
+		Parent = content,
+	})
+
+	local sections = create_new('Folder', {
+		Parent = sections_viewport,
+	})
+
+	local mobile_toggle_gui = create_new('ScreenGui', {
+		Name = '_angeli_toggle',
+		ResetOnSpawn = false,
+		IgnoreGuiInset = true,
+		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+		Parent = gui,
+	})
+
+	local mobile_toggle = create_new('TextButton', {
+		AnchorPoint = _new_vector2(0.5, 0),
+		Position = _new_udim2(0.5, 0, 0, 12),
+		Size = _new_udim2(0, 40, 0, 40),
+		Text = '',
+		AutoButtonColor = false,
+		BorderSizePixel = 0,
+		Visible = self._is_mobile,
+		ZIndex = 100,
+		Parent = mobile_toggle_gui,
+	})
+
+	theme.paint(mobile_toggle, 'BackgroundColor3', 'surface')
+	create_round(mobile_toggle, 8)
+	create_outline(mobile_toggle)
+
+	local toggle_icon = create_new('ImageLabel', {
+		BackgroundTransparency = 1,
+		AnchorPoint = _new_vector2(0.5, 0.5),
+		Position = _new_udim2(0.5, 0, 0.5, 0),
+		Size = _new_udim2(0, 20, 0, 20),
+		Image = 'rbxassetid://10709812159',
+		ZIndex = 101,
+		Parent = mobile_toggle,
+	})
+
+	theme.paint(toggle_icon, 'ImageColor3', 'text')
+
+	local apply_scale = LPH_NO_VIRTUALIZE(function()
+		if self._is_mobile then
+			local viewport = workspace.CurrentCamera.ViewportSize
+			if self._ui.AbsoluteSize.Y > 0 then
+				viewport = self._ui.AbsoluteSize
+			end
+			self._ui_scale = _clamp(
+				_min((viewport.X / 1400) * 1.4375, (viewport.X * 0.95) / WINDOW_WIDTH, (viewport.Y * 0.95) / WINDOW_HEIGHT),
+				0.503125,
+				1.4375
+			)
+		else
+			self._ui_scale = 1
+		end
+
+		scale_object.Scale = self._ui_scale
+
+		if self._keybind_scale then
+			self._keybind_scale.Scale = self._ui_scale
+		end
+
+		self._notification_holder.Position = _new_udim2(0.5, 0, 0.5, 178 * self._ui_scale)
+		self._notification_scale.Scale = self._ui_scale
+
+		_defer(function()
+			self:_move_pin()
+		end)
+	end)
+
+	self._apply_scale = apply_scale
+	apply_scale()
+
+	local camera = workspace.CurrentCamera
+	if camera then
+		camera:GetPropertyChangedSignal('ViewportSize'):Connect(function()
+			_defer(apply_scale)
+		end)
+	end
+
+	local drag_connection = nil
+	container.InputBegan:Connect(function(input)
+		if
+			input.UserInputType ~= Enum.UserInputType.MouseButton1
+			and input.UserInputType ~= Enum.UserInputType.Touch
+		then
+			return
+		end
+
+		self._dragging = true
+		self._drag_start = input.Position
+		self._drag_origin = container.Position
+
+		self:close_all_dropdowns()
+
+		if drag_connection then
+			drag_connection:Disconnect()
+		end
+
+		drag_connection = input.Changed:Connect(function()
+			if input.UserInputState == Enum.UserInputState.End then
+				self._dragging = false
+				if drag_connection then
+					drag_connection:Disconnect()
+					drag_connection = nil
+				end
+			end
+		end)
+	end)
+
+	user_input_service.InputChanged:Connect(function(input)
+		if not self._dragging then
+			return
+		end
+		if
+			input.UserInputType ~= Enum.UserInputType.MouseMovement
+			and input.UserInputType ~= Enum.UserInputType.Touch
+		then
+			return
+		end
+
+		local delta = (input.Position - self._drag_start) / self._ui_scale
+
+		_create_tween(tween_service, container, _new_tween_info(0.2), {
+			Position = _new_udim2(
+				self._drag_origin.X.Scale,
+				self._drag_origin.X.Offset + delta.X,
+				self._drag_origin.Y.Scale,
+				self._drag_origin.Y.Offset + delta.Y
+			),
+		}):Play()
+	end)
+
+	user_input_service.InputBegan:Connect(function(input, processed)
+		if processed then
+			return
+		end
+
+		local key_name = self._flags.minimize_key
+		local minimize_key = Enum.KeyCode.Insert
+
+		if _type(key_name) == 'string' then
+			local ok, resolved = _pcall(function()
+				return Enum.KeyCode[key_name]
+			end)
+			if ok and resolved then
+				minimize_key = resolved
+			end
+		end
+
+		if input.KeyCode == minimize_key then
+			self:set_open(not self._ui_open)
+		end
+	end)
+
+	mobile_toggle.MouseButton1Click:Connect(function()
+		self:set_open(not self._ui_open)
+	end)
+
+	self._container = container
+	self._sidebar = sidebar
+	self._pin = pin
+	self._tabs_container = tabs_container
+	self._sections = sections
+	self._main_content = content
+	self._topbar = topbar
+end
+
+function library:_move_pin()
+	if not self._active_tab or not self._pin then
+		return
+	end
+
+	local button = self._active_tab._button
+	local target = _new_udim2(
+		0,
+		10,
+		0,
+		(button.AbsolutePosition.Y - self._sidebar.AbsolutePosition.Y + button.AbsoluteSize.Y / 2) / self._ui_scale - 7
+	)
+
+	_create_tween(
+		tween_service,
+		self._pin,
+		_new_tween_info(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+		{
+			Position = target,
+		}
+	):Play()
+end
+
+function library:set_open(state)
+	if state == self._ui_open then
+		return
+	end
+	self._ui_open = state
+	local container = self._container
+
+	if state then
+		container.Visible = true
+		_create_tween(tween_service, container, _new_tween_info(0.5, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+			Size = _udim2_from_offset(WINDOW_WIDTH, WINDOW_HEIGHT),
+		}):Play()
+		return
+	end
+
+	self:close_all_dropdowns()
+
+	_create_tween(tween_service, container, _new_tween_info(0.5, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+		Size = _new_udim2(0, 0, 0, 0),
+	}):Play()
+
+	_delay(0.5, function()
+		if not self._ui_open then
+			container.Visible = false
+		end
+	end)
+end
+
+function library:create_category(name)
+	self._category_order += 1
+	self._layout_order = 0
+
+	local index = self._category_order
+	local base_order = index * 1000
+
+	local manager = {
+		_name = name,
+		_base_order = base_order,
+		_count = 0,
+	}
+
+	function manager:create_tab(title, icon)
+		self._count += 1
+		return library.create_tab(self._runtime, title, icon, self._base_order + self._count, self._name)
+	end
+
+	manager._runtime = self
+
+	_insert(self._categories, manager)
+	local key = normalize_name(name)
+	self._category_registry[key] = self._category_registry[key] or {}
+	_insert(self._category_registry[key], manager)
+
+	return manager
+end
+
+local group_methods
+
+function library:create_tab(title, icon, order, category_name)
+	local runtime = self
+	local manager = {
+		_title = title,
+		_category = category_name,
+		_groups = {},
+		_registry = {},
+	}
+
+	if not order then
+		runtime._layout_order += 1
+		order = runtime._category_order * 1000 + runtime._layout_order
+	end
+
+	local first = #runtime._tabs == 0
+
+	local button = create_new('TextButton', {
+		Name = title,
+		BackgroundTransparency = 1,
+		LayoutOrder = order,
+		Size = _new_udim2(1, 0, 0, 32),
+		Text = '',
+		AutoButtonColor = false,
+		BorderSizePixel = 0,
+		Parent = runtime._tabs_container,
+	})
+
+	create_round(button, 6)
+
+	local icon_label = create_new('ImageLabel', {
+		BackgroundTransparency = 1,
+		AnchorPoint = _new_vector2(0, 0.5),
+		Position = _new_udim2(0, 10, 0.5, 0),
+		Size = _new_udim2(0, 16, 0, 16),
+		Image = icon or 'rbxassetid://10709812159',
+		Parent = button,
+	})
+
+	theme.paint(icon_label, 'ImageColor3', 'text_dim')
+
+	local title_label = create_label({
+		Position = _new_udim2(0, 34, 0, 0),
+		Size = _new_udim2(1, -44, 1, 0),
+		Text = title,
+		TextSize = runtime._label_size,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		Parent = button,
+	})
+
+	local function create_column(x)
+		local column = create_scroller(
+			runtime._sections,
+			_new_udim2(0, x - 2, 0, 0),
+			_new_udim2(0, (WINDOW_WIDTH - SIDEBAR_WIDTH - 32 - 12) / 2 + 4, 1, 0)
+		)
+		create_padding(column, 16, 16, 2, 2)
+		create_list(column, 12)
+		column.Visible = false
+		column_base[column] = x - 2
+		return column
+	end
+
+	local left = create_column(16)
+	local right = create_column(16 + (WINDOW_WIDTH - SIDEBAR_WIDTH - 32 - 12) / 2 + 12)
+
+	local data = {
+		_button = button,
+		_icon = icon_label,
+		_label = title_label,
+		_left = left,
+		_right = right,
+		_active = false,
+		_enabled = true,
+		_title = title,
+		_category = category_name,
+		_manager = manager,
+	}
+
+	manager._data = data
+	_insert(runtime._tabs, data)
+
+	if first then
+		runtime._active_tab = data
+		runtime:update_tabs(data)
+		runtime:update_sections(left, right)
+	end
+
+	button.MouseButton1Click:Connect(function()
+		if not data._enabled then
+			return
+		end
+		runtime._active_tab = data
+		runtime:update_tabs(data)
+		runtime:update_sections(left, right)
+	end)
+
+	function manager:set_enabled(state)
+		data._enabled = state == true
+		button.Active = data._enabled
+		button.Selectable = data._enabled
+		icon_label.ImageTransparency = data._enabled and 0 or 0.65
+		title_label.TextTransparency = data._enabled and 0 or 0.65
+
+		if not data._enabled and runtime._active_tab == data then
+			for _, candidate in runtime._tabs do
+				if candidate ~= data and candidate._enabled then
+					runtime._active_tab = candidate
+					runtime:update_tabs(candidate)
+					runtime:update_sections(candidate._left, candidate._right)
+					break
+				end
+			end
+		end
+	end
+
+	function manager:is_enabled()
+		return data._enabled
+	end
+
+	function manager:create_group(title, side)
+		local values = {}
+		if _type(title) == 'table' then
+			values = title
+		else
+			values.title = title
+			values.side = side
+		end
+		values.title = values.title or 'Group'
+		values.side = values.side == 'right' and 'right' or 'left'
+
+		local group = {
+			_order = 0,
+			_title = values.title,
+			_side = values.side,
+			_tab = manager,
+		}
+
+		local frame = create_new('Frame', {
+			AutomaticSize = Enum.AutomaticSize.Y,
+			Size = _new_udim2(1, 0, 0, 0),
+			BorderSizePixel = 0,
+			ClipsDescendants = true,
+			Parent = values.side == 'left' and left or right,
+		})
+
+		theme.paint(frame, 'BackgroundColor3', 'surface')
+		create_round(frame, 8)
+		create_outline(frame, true)
+		create_padding(frame, 12, 12, 12, 12)
+		create_list(frame, 8)
+
+		create_label({
+			LayoutOrder = 0,
+			Size = _new_udim2(1, 0, 0, 12),
+			Text = string.upper(values.title),
+			TextSize = runtime._small_size + 1,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextTransparency = 0.2,
+			Parent = frame,
+		})
+
+		group._frame = frame
+		group._runtime = runtime
+
+		local function next_order()
+			group._order += 1
+			return group._order
+		end
+
+		group._next_order = next_order
+
+		setmetatable(group, { __index = group_methods })
+
+		_insert(manager._groups, group)
+		local key = normalize_name(values.title)
+		manager._registry[key] = manager._registry[key] or {}
+		_insert(manager._registry[key], group)
+
+		return group
+	end
+
+	local key = normalize_name(title)
+	runtime._tab_registry[key] = runtime._tab_registry[key] or {}
+	_insert(runtime._tab_registry[key], manager)
+
+	return manager
+end
+
+function library:update_tabs(tab)
+	for _, data in self._tabs do
+		local active = data == tab
+		if active then
+			data._active = true
+		elseif data._active then
+			data._active = false
+		end
+
+		_create_tween(tween_service, data._button, _new_tween_info(0.35, Enum.EasingStyle.Quint), {
+			BackgroundTransparency = active and 0 or 1,
+		}):Play()
+
+		theme.paint(data._label, 'TextColor3', active and 'text' or 'text_dim')
+		theme.paint(data._icon, 'ImageColor3', active and 'text' or 'text_dim')
+	end
+
+	if tab then
+		theme.paint(tab._button, 'BackgroundColor3', 'surface_alt')
+		self._pin.BackgroundTransparency = 0
+		self:_move_pin()
+		_defer(function()
+			self:_move_pin()
+		end)
+	end
+end
+
+function library:update_sections(left, right)
+	for _, object in self._sections:GetChildren() do
+		if object ~= left and object ~= right and object.Visible then
+			object.Visible = false
+		end
+	end
+
+	for _, column in { left, right } do
+		if column then
+			local base = column_base[column] or column.Position.X.Offset
+
+			if not column.Visible then
+				column.Visible = true
+				column.Position = _new_udim2(0, base + 12, 0, 0)
+			end
+
+			_create_tween(
+				tween_service,
+				column,
+				_new_tween_info(0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+				{
+					Position = _new_udim2(0, base, 0, 0),
+				}
+			):Play()
+		end
+	end
+end
+
+function library:notify(message)
+	local runtime = resolve_runtime(self)
+	if not runtime or not runtime._notification_holder then
+		return
+	end
+
+	local text = string.gsub(_tostring(message or ''), '[\r\n]+', ' ')
+	text = trim(text)
+	if text == '' then
+		return
+	end
+
+	local text_width = text_service:GetTextSize(text, runtime._label_size, Enum.Font.GothamSemibold, _new_vector2(1000, 26)).X
+	local width = _clamp(text_width + 24, 72, 540)
+
+	runtime._notification_order += 1
+
+	local notification = create_new('Frame', {
+		BackgroundTransparency = 1,
+		LayoutOrder = runtime._notification_order,
+		Size = _new_udim2(0, width - 12, 0, 0),
+		BorderSizePixel = 0,
+		ClipsDescendants = true,
+		ZIndex = 200,
+		Parent = runtime._notification_holder,
+	})
+
+	theme.paint(notification, 'BackgroundColor3', 'surface')
+	create_round(notification, 6)
+
+	local stroke = create_outline(notification)
+	stroke.Transparency = 1
+
+	local label = create_label({
+		Position = _new_udim2(0, 10, 0, 0),
+		Size = _new_udim2(1, -20, 1, 0),
+		Text = text,
+		TextRole = 'text',
+		TextSize = runtime._label_size,
+		TextTransparency = 1,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		ZIndex = 201,
+		Parent = notification,
+	})
+
+	_create_tween(tween_service, notification, _new_tween_info(0.25, Enum.EasingStyle.Quint), {
+		BackgroundTransparency = 0,
+		Size = _new_udim2(0, width, 0, 26),
+	}):Play()
+
+	_create_tween(tween_service, label, _new_tween_info(0.2, Enum.EasingStyle.Quint), {
+		TextTransparency = 0.1,
+	}):Play()
+
+	_create_tween(tween_service, stroke, _new_tween_info(0.2), { Transparency = 0 }):Play()
+
+	_delay(2.6, function()
+		if not notification.Parent then
+			return
+		end
+		_create_tween(tween_service, notification, _new_tween_info(0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
+			BackgroundTransparency = 1,
+			Size = _new_udim2(0, width - 12, 0, 0),
+		}):Play()
+		_create_tween(tween_service, label, _new_tween_info(0.2), { TextTransparency = 1 }):Play()
+		_create_tween(tween_service, stroke, _new_tween_info(0.2), { Transparency = 1 }):Play()
+	end)
+
+	_delay(2.9, function()
+		if notification.Parent then
+			notification:Destroy()
+		end
+	end)
+end
+
+function library:_init_keybinds()
+	local frame = create_new('Frame', {
+		Name = '_keybinds',
+		Position = _new_udim2(0, 16, 0.2, 0),
+		Size = _new_udim2(0, 250, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		BorderSizePixel = 0,
+		ClipsDescendants = true,
+		Visible = false,
+		Active = true,
+		Parent = self._ui,
+	})
+
+	theme.paint(frame, 'BackgroundColor3', 'bg')
+	create_round(frame, 4)
+	create_outline(frame, true)
+	create_list(frame)
+
+	self._keybind_scale = create_new('UIScale', { Parent = frame })
+
+	local header = create_new('Frame', {
+		BackgroundTransparency = 1,
+		LayoutOrder = 0,
+		Size = _new_udim2(1, 0, 0, 32),
+		Parent = frame,
+	})
+
+	local icon = create_new('ImageLabel', {
+		BackgroundTransparency = 1,
+		AnchorPoint = _new_vector2(0, 0.5),
+		Position = _new_udim2(0, 12, 0.5, 0),
+		Size = _new_udim2(0, 14, 0, 14),
+		Image = 'rbxassetid://10723416765',
+		Parent = header,
+	})
+
+	theme.paint(icon, 'ImageColor3', 'text')
+
+	create_label({
+		Size = _new_udim2(1, 0, 1, 0),
+		Text = 'Keybinds',
+		TextRole = 'text',
+		TextSize = 14,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		Parent = header,
+	})
+
+	create_divider(header, _new_udim2(0, 0, 1, -1), _new_udim2(1, 0, 0, 1))
+
+	local content = create_new('Frame', {
+		BackgroundTransparency = 1,
+		LayoutOrder = 1,
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Size = _new_udim2(1, 0, 0, 0),
+		Parent = frame,
+	})
+
+	create_list(content, 2)
+	create_padding(content, 6, 8, 12, 12)
+
+	self._keybind_frame = frame
+	self._keybind_content = content
+
+	local dragging = false
+	local drag_start = nil
+	local origin = nil
+
+	frame.InputBegan:Connect(function(input)
+		if
+			input.UserInputType ~= Enum.UserInputType.MouseButton1
+			and input.UserInputType ~= Enum.UserInputType.Touch
+		then
+			return
+		end
+		dragging = true
+		drag_start = input.Position
+		origin = frame.Position
+		input.Changed:Connect(function()
+			if input.UserInputState == Enum.UserInputState.End then
+				dragging = false
+			end
+		end)
+	end)
+
+	user_input_service.InputChanged:Connect(function(input)
+		if not dragging then
+			return
+		end
+		if
+			input.UserInputType ~= Enum.UserInputType.MouseMovement
+			and input.UserInputType ~= Enum.UserInputType.Touch
+		then
+			return
+		end
+
+		local delta = (input.Position - drag_start) / self._ui_scale
+
+		_create_tween(tween_service, frame, _new_tween_info(0.15), {
+			Position = _new_udim2(
+				origin.X.Scale,
+				origin.X.Offset + delta.X,
+				origin.Y.Scale,
+				origin.Y.Offset + delta.Y
+			),
+		}):Play()
+	end)
+end
+
+function library:refresh_keybinds()
+	if not self._keybind_content then
+		return
+	end
+
+	for _, child in self._keybind_content:GetChildren() do
+		if child:IsA('Frame') then
+			child:Destroy()
+		end
+	end
+
+	local any = false
+
+	for _, entry in self._keybind_entries do
+		if entry.key_name and entry.key_name ~= '' then
+			any = true
+			local row = create_new('Frame', {
+				BackgroundTransparency = 1,
+				Size = _new_udim2(1, 0, 0, 24),
+				Parent = self._keybind_content,
+			})
+
+			local role = self._flags[entry.flag] and 'text' or 'text_dim'
+
+			create_label({
+				Size = _new_udim2(1, -70, 1, 0),
+				Text = entry.title,
+				TextRole = role,
+				TextSize = 14,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				TextTruncate = Enum.TextTruncate.AtEnd,
+				Parent = row,
+			})
+
+			create_label({
+				AnchorPoint = _new_vector2(1, 0.5),
+				Position = _new_udim2(1, 0, 0.5, 0),
+				Size = _new_udim2(0, 66, 0, 18),
+				Text = `[ {entry.key_name} ]`,
+				TextRole = role,
+				TextSize = 14,
+				TextXAlignment = Enum.TextXAlignment.Right,
+				Parent = row,
+			})
+		end
+	end
+
+	self._keybind_frame.Visible = self._keybind_visible and any
+end
+
+function library:set_keybind_visible(state)
+	self._keybind_visible = state == true
+	self:refresh_keybinds()
+end
+
+function library:register_keybind(flag, title, key_name)
+	_insert(self._keybind_entries, {
+		flag = flag,
+		title = title,
+		key_name = key_name,
+	})
+	self:refresh_keybinds()
+end
+
+local function create_switch(parent, order, values, runtime)
+	local state = values.default == true
+
+	local row = create_new('Frame', {
+		BackgroundTransparency = 1,
+		LayoutOrder = order,
+		Size = _new_udim2(1, 0, 0, ROW_HEIGHT),
+		Parent = parent,
+	})
+
+	local label = create_label({
+		Size = _new_udim2(1, -40, 1, 0),
+		Text = values.title or 'Toggle',
+		TextSize = runtime._label_size,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		Parent = row,
+	})
+
+	local track = create_new('Frame', {
+		AnchorPoint = _new_vector2(1, 0.5),
+		Position = _new_udim2(1, 0, 0.5, 0),
+		Size = _new_udim2(0, 30, 0, 18),
+		BorderSizePixel = 0,
+		Parent = row,
+	})
+
+	create_pill(track)
+
+	local inset = (18 - 12) / 2
+	local off = _new_udim2(0, inset, 0.5, 0)
+	local on = _new_udim2(0, 30 - 12 - inset, 0.5, 0)
+
+	local knob = create_new('Frame', {
+		AnchorPoint = _new_vector2(0, 0.5),
+		Position = off,
+		Size = _new_udim2(0, 12, 0, 12),
+		BorderSizePixel = 0,
+		Parent = track,
+	})
+
+	create_pill(knob)
+
+	local function render(animate)
+		theme.paint(track, 'BackgroundColor3', state and 'accent' or 'surface_alt')
+		theme.paint(knob, 'BackgroundColor3', state and 'accent_text' or 'text_dim')
+		theme.paint(label, 'TextColor3', state and 'text' or 'text_dim')
+
+		local target = state and on or off
+		if animate then
+			_create_tween(tween_service, knob, _new_tween_info(0.25, Enum.EasingStyle.Quint), { Position = target }):Play()
+		else
+			knob.Position = target
+		end
+	end
+
+	local function set_value(value, animate, silent, quiet)
+		state = value == true
+		render(animate)
+
+		if values.flag then
+			runtime._flags[values.flag] = state
+			if not silent then
+				library._save(runtime)
+			end
+		end
+
+		if values.callback and not quiet then
+			local ok, err = _pcall(values.callback, state)
+			if not ok then
+				warn(`[Angeli] toggle callback failed: {_tostring(err)}`)
+			end
+		end
+	end
+
+	local click = create_new('TextButton', {
+		BackgroundTransparency = 1,
+		Size = _new_udim2(1, 0, 1, 0),
+		Text = '',
+		Parent = row,
+	})
+
+	click.MouseButton1Click:Connect(function()
+		set_value(not state, true)
+	end)
+
+	render(false)
+
+	if values.flag and runtime._flags[values.flag] ~= nil then
+		state = runtime._flags[values.flag] == true
+		render(false)
+	end
+
+	theme.on_apply(function()
+		render(false)
+	end)
+
+	if values.flag then
+		library._bind(runtime, values.flag, function(value)
+			set_value(value, false, true, true)
+		end)
+	end
+
+	return {
+		set = set_value,
+		get = function()
+			return state
+		end,
+	}
+end
+
+local function create_slider(parent, order, values, runtime)
+	local minimum = values.minimum or values.min or 0
+	local maximum = values.maximum or values.max or 100
+	local value = values.default or minimum
+
+	if values.flag and _type(runtime._flags[values.flag]) == 'number' then
+		value = runtime._flags[values.flag]
+	end
+
+	value = _clamp(value, minimum, maximum)
+
+	local row = create_new('Frame', {
+		BackgroundTransparency = 1,
+		LayoutOrder = order,
+		Size = _new_udim2(1, 0, 0, 30),
+		Parent = parent,
+	})
+
+	create_label({
+		Size = _new_udim2(1, -56, 0, 16),
+		Text = values.title or 'Slider',
+		TextSize = runtime._label_size,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		Parent = row,
+	})
+
+	local value_label = create_label({
+		AnchorPoint = _new_vector2(1, 0),
+		Position = _new_udim2(1, 0, 0, 0),
+		Size = _new_udim2(0, 48, 0, 16),
+		Text = _tostring(value),
+		TextRole = 'text',
+		TextSize = runtime._label_size,
+		TextXAlignment = Enum.TextXAlignment.Right,
+		Parent = row,
+	})
+
+	local track_button = create_new('TextButton', {
+		BackgroundTransparency = 1,
+		Position = _new_udim2(0, 0, 0, 16),
+		Size = _new_udim2(1, 0, 1, -16),
+		Text = '',
+		AutoButtonColor = false,
+		BorderSizePixel = 0,
+		Parent = row,
+	})
+
+	local track = create_new('Frame', {
+		AnchorPoint = _new_vector2(0, 0.5),
+		Position = _new_udim2(0, 0, 0.5, 0),
+		Size = _new_udim2(1, 0, 0, 6),
+		BorderSizePixel = 0,
+		Parent = track_button,
+	})
+
+	theme.paint(track, 'BackgroundColor3', 'surface_alt')
+	create_pill(track)
+
+	local fill = create_new('Frame', {
+		Size = _new_udim2((value - minimum) / (maximum - minimum), 0, 1, 0),
+		BorderSizePixel = 0,
+		Parent = track,
+	})
+
+	theme.paint(fill, 'BackgroundColor3', 'accent')
+	create_pill(fill)
+
+	local knob = create_new('Frame', {
+		AnchorPoint = _new_vector2(0.5, 0.5),
+		Position = _new_udim2(1, 0, 0.5, 0),
+		Size = _new_udim2(0, 12, 0, 12),
+		BorderSizePixel = 0,
+		Parent = fill,
+	})
+
+	theme.paint(knob, 'BackgroundColor3', 'accent')
+	create_pill(knob)
+
+	local function commit(next_value, animate, silent, quiet)
+		value = _clamp(next_value, minimum, maximum)
+		if values.rounding then
+			value = _floor(value + 0.5)
+		end
+
+		value_label.Text = _tostring(value)
+
+		local target = (value - minimum) / (maximum - minimum)
+		if animate then
+			_create_tween(tween_service, fill, _new_tween_info(0.12), { Size = _new_udim2(target, 0, 1, 0) }):Play()
+		else
+			fill.Size = _new_udim2(target, 0, 1, 0)
+		end
+
+		if values.flag then
+			runtime._flags[values.flag] = value
+			if not silent then
+				library._save(runtime)
+			end
+		end
+
+		if values.callback and not quiet then
+			local ok, err = _pcall(values.callback, value)
+			if not ok then
+				warn(`[Angeli] slider callback failed: {_tostring(err)}`)
+			end
+		end
+	end
+
+	local dragging = false
+
+	local function from_input(input)
+		local width = track.AbsoluteSize.X
+		if width <= 0 then
+			return
+		end
+		local ratio = _clamp((input.Position.X - track.AbsolutePosition.X) / width, 0, 1)
+		commit(minimum + (maximum - minimum) * ratio, true)
+	end
+
+	track_button.InputBegan:Connect(function(input)
+		if
+			input.UserInputType ~= Enum.UserInputType.MouseButton1
+			and input.UserInputType ~= Enum.UserInputType.Touch
+		then
+			return
+		end
+		dragging = true
+		from_input(input)
+	end)
+
+	user_input_service.InputEnded:Connect(function(input)
+		if
+			input.UserInputType == Enum.UserInputType.MouseButton1
+			or input.UserInputType == Enum.UserInputType.Touch
+		then
+			dragging = false
+		end
+	end)
+
+	user_input_service.InputChanged:Connect(function(input)
+		if not dragging then
+			return
+		end
+		if
+			input.UserInputType ~= Enum.UserInputType.MouseMovement
+			and input.UserInputType ~= Enum.UserInputType.Touch
+		then
+			return
+		end
+		from_input(input)
+	end)
+
+	commit(value, false, true)
+
+	if values.flag then
+		library._bind(runtime, values.flag, function(next_value)
+			commit(next_value, false, true, true)
+		end)
+	end
+
+	return {
+		set = commit,
+		get = function()
+			return value
+		end,
+	}
+end
+
+local function create_dropdown(parent, order, values, runtime)
+	local multi = values.multi == true
+	local selected = {}
+	local current = nil
+	local options = {}
+	local buttons = {}
+	local open = false
+	local locked = false
+
+	for _, option in values.options or {} do
+		_insert(options, _tostring(option))
+	end
+
+	current = values.default or options[1]
+
+	if values.flag and runtime._flags[values.flag] ~= nil then
+		current = runtime._flags[values.flag]
+	end
+
+	if multi and _type(current) == 'table' then
+		for key, value in _pairs(current) do
+			if _type(key) == 'string' and value == true then
+				selected[key] = true
+			elseif _type(value) == 'string' then
+				selected[value] = true
+			end
+		end
+	end
+
+	local container = create_new('Frame', {
+		BackgroundTransparency = 1,
+		LayoutOrder = order,
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Size = _new_udim2(1, 0, 0, 0),
+		ClipsDescendants = true,
+		Parent = parent,
+	})
+
+	create_list(container, 4)
+
+	create_label({
+		LayoutOrder = 0,
+		Size = _new_udim2(1, 0, 0, 16),
+		Text = values.title or 'Dropdown',
+		TextSize = runtime._label_size,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		Parent = container,
+	})
+
+	local box = create_new('Frame', {
+		LayoutOrder = 1,
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Size = _new_udim2(1, 0, 0, 0),
+		BorderSizePixel = 0,
+		ClipsDescendants = true,
+		Parent = container,
+	})
+
+	theme.paint(box, 'BackgroundColor3', 'surface_alt')
+	create_round(box, 6)
+	create_list(box)
+
+	local header = create_new('Frame', {
+		BackgroundTransparency = 1,
+		LayoutOrder = 0,
+		Size = _new_udim2(1, 0, 0, 24),
+		Parent = box,
+	})
+
+	local header_label = create_label({
+		Position = _new_udim2(0, 10, 0, 0),
+		Size = _new_udim2(1, values.hide_icon and -20 or -32, 1, 0),
+		Text = '',
+		TextSize = runtime._label_size,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Parent = header,
+	})
+
+	create_new('UIGradient', {
+		Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0),
+			NumberSequenceKeypoint.new(0.7, 0),
+			NumberSequenceKeypoint.new(0.9, 0.5),
+			NumberSequenceKeypoint.new(1, 1),
+		}),
+		Parent = header_label,
+	})
+
+	local chevron = nil
+
+	if not values.hide_icon then
+		chevron = create_new('ImageLabel', {
+			BackgroundTransparency = 1,
+			AnchorPoint = _new_vector2(1, 0.5),
+			Position = _new_udim2(1, -10, 0.5, 0),
+			Size = _new_udim2(0, 12, 0, 12),
+			Image = 'rbxassetid://10734899821',
+			Parent = header,
+		})
+		theme.paint(chevron, 'ImageColor3', 'text_dim')
+	end
+
+	local list = create_scroller(box, _new_udim2(0, 0, 0, 24), _new_udim2(1, 0, 0, 0))
+	list.LayoutOrder = 1
+	create_list(list)
+
+	local dropdown = {
+		_open = open,
+		_locked = locked,
+		_options = options,
+	}
+
+	function dropdown:get_value()
+		if multi then
+			local copy = {}
+			for option, state in _pairs(selected) do
+				if state then
+					copy[option] = true
+				end
+			end
+			return copy
+		end
+		return current
+	end
+
+	local function render_header()
+		if multi then
+			local names = {}
+			for option, state in _pairs(selected) do
+				if state then
+					_insert(names, option)
+				end
+			end
+			_sort(names)
+			header_label.Text = #names == 0 and (values.empty_text or 'None') or table.concat(names, ', ')
+			theme.paint(header_label, 'TextColor3', #names == 0 and 'text_dim' or 'text')
+			return
+		end
+
+		header_label.Text = current and _tostring(current) or (values.empty_text or 'None')
+		theme.paint(header_label, 'TextColor3', current and 'text' or 'text_dim')
+	end
+
+	local function refresh_labels()
+		for option, button in _pairs(buttons) do
+			local label = button:FindFirstChildWhichIsA('TextLabel')
+			if label then
+				local is_selected = multi and selected[option] or option == current
+				theme.paint(label, 'TextColor3', is_selected and 'text' or 'text_dim')
+				label.TextTransparency = is_selected and 0.2 or 0.5
+				button.Visible = not (values.hide_selected_option and is_selected and not multi)
+			end
+		end
+	end
+
+	local function list_height()
+		local visible = 0
+		for option in _pairs(buttons) do
+			if buttons[option].Visible then
+				visible += 1
+			end
+		end
+		return _min(visible * ROW_HEIGHT, 5 * ROW_HEIGHT)
+	end
+
+	local function commit(value, silent, quiet)
+		if values.flag then
+			runtime._flags[values.flag] = value
+			if not silent then
+				library._save(runtime)
+			end
+		end
+		if values.callback and not quiet then
+			local ok, err = _pcall(values.callback, value)
+			if not ok then
+				warn(`[Angeli] dropdown callback failed: {_tostring(err)}`)
+			end
+		end
+	end
+
+	local function select_option(option)
+		if multi then
+			selected[option] = not selected[option]
+			render_header()
+			refresh_labels()
+			commit(dropdown:get_value())
+			list.Size = _new_udim2(1, 0, 0, list_height())
+			return
+		end
+
+		current = option
+		render_header()
+		refresh_labels()
+		commit(current)
+		dropdown:unfold(false)
+	end
+
+	local function add_option(option)
+		option = _tostring(option)
+		if _find(options, option) then
+			return
+		end
+
+		_insert(options, option)
+
+		local button = create_new('TextButton', {
+			BackgroundTransparency = 1,
+			LayoutOrder = #options,
+			Size = _new_udim2(1, 0, 0, ROW_HEIGHT),
+			Text = '',
+			AutoButtonColor = false,
+			Parent = list,
+		})
+
+		buttons[option] = button
+
+		local label = create_label({
+			Position = _new_udim2(0, 10, 0, 0),
+			Size = _new_udim2(1, -20, 1, 0),
+			Text = option,
+			TextSize = runtime._label_size,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextTruncate = Enum.TextTruncate.AtEnd,
+			Parent = button,
+		})
+
+		button.MouseEnter:Connect(function()
+			_create_tween(tween_service, label, _new_tween_info(0.2), { TextTransparency = 0 }):Play()
+		end)
+
+		button.MouseLeave:Connect(function()
+			local is_selected = multi and selected[option] or option == current
+			_create_tween(tween_service, label, _new_tween_info(0.2), {
+				TextTransparency = is_selected and 0.2 or 0.5,
+			}):Play()
+		end)
+
+		button.MouseButton1Click:Connect(function()
+			select_option(option)
+		end)
+	end
+
+	function dropdown:set_options(next_options, next_selected)
+		for _, button in _pairs(buttons) do
+			button:Destroy()
+		end
+
+		_clear(buttons)
+		_clear(options)
+
+		for _, option in next_options or {} do
+			add_option(option)
+		end
+
+		if multi then
+			_clear(selected)
+			if _type(next_selected) == 'table' then
+				for key, state in _pairs(next_selected) do
+					if _type(key) == 'string' and state == true then
+						selected[key] = true
+					elseif _type(state) == 'string' then
+						selected[state] = true
+					end
+				end
+			end
+		else
+			local candidate = next_selected and _tostring(next_selected) or nil
+			current = candidate and _find(options, candidate) and candidate or options[1]
+		end
+
+		render_header()
+		refresh_labels()
+
+		if dropdown._open then
+			list.Size = _new_udim2(1, 0, 0, list_height())
+		end
+	end
+
+	function dropdown:set_value(value, silent, quiet)
+		if multi then
+			_clear(selected)
+			if _type(value) == 'table' then
+				for key, state in _pairs(value) do
+					if _type(key) == 'string' and state == true then
+						selected[key] = true
+					elseif _type(state) == 'string' then
+						selected[state] = true
+					end
+				end
+			end
+			render_header()
+			refresh_labels()
+			commit(dropdown:get_value(), silent, quiet)
+			return
+		end
+
+		value = _tostring(value)
+		if not _find(options, value) then
+			return
+		end
+
+		current = value
+		render_header()
+		refresh_labels()
+		commit(current, silent, quiet)
+	end
+
+	function dropdown:unfold(state)
+		local target = state
+		if target == nil then
+			target = not dropdown._open
+		end
+		if dropdown._locked and not target then
+			return
+		end
+		if target == dropdown._open then
+			return
+		end
+
+		if target then
+			for _, other in runtime._dropdowns do
+				if other ~= dropdown and other._open then
+					other:unfold(false)
+				end
+			end
+		end
+
+		dropdown._open = target
+
+		_create_tween(tween_service, list, _new_tween_info(0.35, Enum.EasingStyle.Quint), {
+			Size = _new_udim2(1, 0, 0, target and list_height() or 0),
+		}):Play()
+
+		if not target then
+			_delay(0.35, function()
+				if not dropdown._open then
+					list.CanvasPosition = _new_vector2(0, 0)
+				end
+			end)
+		end
+	end
+
+	function dropdown:set_locked_open(state)
+		dropdown._locked = state == true
+		if dropdown._locked then
+			dropdown:unfold(true)
+		end
+	end
+
+	local header_button = create_new('TextButton', {
+		BackgroundTransparency = 1,
+		Size = _new_udim2(1, 0, 1, 0),
+		Text = '',
+		ZIndex = 10,
+		Parent = header,
+	})
+
+	header_button.MouseButton1Click:Connect(function()
+		dropdown:unfold()
+	end)
+
+	local initial = shallow_copy(options)
+	_clear(options)
+	for _, option in initial do
+		add_option(option)
+	end
+
+	render_header()
+	refresh_labels()
+
+	_insert(runtime._dropdowns, dropdown)
+
+	if values.flag then
+		library._bind(runtime, values.flag, function(value)
+			dropdown:set_value(value, true, true)
+		end)
+	end
+
+	return dropdown
+end
+
+local function create_button(parent, order, values, runtime)
+	local button = create_new('TextButton', {
+		BackgroundTransparency = 0,
+		LayoutOrder = order,
+		Size = _new_udim2(1, 0, 0, 26),
+		FontFace = FONT,
+		Text = values.title or 'Button',
+		TextSize = runtime._label_size,
+		AutoButtonColor = false,
+		BorderSizePixel = 0,
+		Parent = parent,
+	})
+
+	theme.paint(button, 'BackgroundColor3', 'surface_alt')
+	theme.paint(button, 'TextColor3', 'text')
+	create_round(button, 6)
+
+	button.MouseButton1Click:Connect(function()
+		button.BackgroundColor3 = theme.color('stroke')
+		_create_tween(tween_service, button, _new_tween_info(0.2), {
+			BackgroundColor3 = theme.color('surface_alt'),
+		}):Play()
+
+		if values.callback then
+			local ok, err = _pcall(values.callback)
+			if not ok then
+				warn(`[Angeli] button callback failed: {_tostring(err)}`)
+			end
+		end
+	end)
+
+	return button
+end
+
+local function create_textbox(parent, order, values, runtime)
+	local height = _max(24, tonumber(values.height) or 56)
+	local raw = _tostring(values.default or '')
+
+	if values.flag and runtime._flags[values.flag] ~= nil then
+		raw = _tostring(runtime._flags[values.flag])
+	end
+
+	local frame = create_new('Frame', {
+		BackgroundTransparency = 1,
+		LayoutOrder = order,
+		Size = _new_udim2(1, 0, 0, height + 20),
+		Parent = parent,
+	})
+
+	create_label({
+		Size = _new_udim2(1, 0, 0, 16),
+		Text = values.title or 'Text',
+		TextSize = runtime._label_size,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		Parent = frame,
+	})
+
+	local box = create_new('TextBox', {
+		Position = _new_udim2(0, 0, 0, 20),
+		Size = _new_udim2(1, 0, 0, height),
+		ClearTextOnFocus = false,
+		MultiLine = values.multi_line ~= false,
+		PlaceholderText = values.placeholder or '',
+		Text = raw,
+		TextSize = values.compact and runtime._label_size or runtime._small_size,
+		TextWrapped = false,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextYAlignment = values.compact and Enum.TextYAlignment.Center or Enum.TextYAlignment.Top,
+		FontFace = FONT,
+		BorderSizePixel = 0,
+		Parent = frame,
+	})
+
+	theme.paint(box, 'BackgroundColor3', 'surface_alt')
+	theme.paint(box, 'TextColor3', 'text')
+	theme.paint(box, 'PlaceholderColor3', 'text_dim')
+	create_round(box, 6)
+	create_padding(box, 0, 0, 10, 10)
+
+	box.FocusLost:Connect(function(enter)
+		if values.flag then
+			runtime._flags[values.flag] = raw
+			library._save(runtime)
+		end
+		if values.callback then
+			local ok, err = _pcall(values.callback, raw, enter)
+			if not ok then
+				warn(`[Angeli] textbox callback failed: {_tostring(err)}`)
+			end
+		end
+	end)
+
+	box:GetPropertyChangedSignal('Text'):Connect(function()
+		raw = box.Text
+	end)
+
+	if values.flag then
+		library._bind(runtime, values.flag, function(value)
+			raw = _tostring(value or '')
+			box.Text = raw
+		end)
+	end
+
+	return {
+		get = function()
+			return raw
+		end,
+		set = function(value)
+			raw = _tostring(value or '')
+			box.Text = raw
+		end,
+		clear = function()
+			raw = ''
+			box.Text = ''
+		end,
+		focus = function()
+			box:CaptureFocus()
+		end,
+	}
+end
+
+local function create_keybind(parent, order, values, runtime)
+	local key = values.default or Enum.KeyCode.E
+
+	if _type(key) == 'string' then
+		local ok, resolved = _pcall(function()
+			return Enum.KeyCode[key]
+		end)
+		key = ok and resolved or Enum.KeyCode.E
+	end
+
+	if values.flag and _type(runtime._flags[values.flag]) == 'string' then
+		local ok, resolved = _pcall(function()
+			return Enum.KeyCode[runtime._flags[values.flag]]
+		end)
+		if ok and resolved then
+			key = resolved
+		end
+	end
+
+	local picking = false
+
+	local row = create_new('Frame', {
+		BackgroundTransparency = 1,
+		LayoutOrder = order,
+		Size = _new_udim2(1, 0, 0, ROW_HEIGHT),
+		Parent = parent,
+	})
+
+	create_label({
+		Size = _new_udim2(0.5, 0, 1, 0),
+		Text = values.title or 'Keybind',
+		TextSize = runtime._label_size,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		Parent = row,
+	})
+
+	local bind = create_new('TextButton', {
+		AnchorPoint = _new_vector2(1, 0.5),
+		Position = _new_udim2(1, 0, 0.5, 0),
+		Size = _new_udim2(0, 36, 0, 22),
+		AutomaticSize = Enum.AutomaticSize.X,
+		FontFace = FONT,
+		Text = key.Name,
+		TextSize = runtime._label_size,
+		AutoButtonColor = false,
+		BorderSizePixel = 0,
+		Parent = row,
+	})
+
+	theme.paint(bind, 'BackgroundColor3', 'surface_alt')
+	theme.paint(bind, 'TextColor3', 'text')
+	create_round(bind, 6)
+	create_padding(bind, 0, 0, 8, 8)
+
+	bind.MouseButton1Click:Connect(function()
+		picking = true
+		bind.Text = '...'
+	end)
+
+	user_input_service.InputBegan:Connect(function(input, processed)
+		if picking then
+			if input.UserInputType == Enum.UserInputType.Keyboard then
+				key = input.KeyCode
+				bind.Text = key.Name
+				picking = false
+
+				if values.flag then
+					runtime._flags[values.flag] = key.Name
+					library._save(runtime)
+				end
+
+				for _, entry in runtime._keybind_entries do
+					if entry.flag == values.flag then
+						entry.key_name = key.Name
+						break
+					end
+				end
+
+				library.refresh_keybinds(runtime)
+			end
+			return
+		end
+
+		if not processed and input.KeyCode == key and values.callback then
+			local ok, err = _pcall(values.callback)
+			if not ok then
+				warn(`[Angeli] keybind callback failed: {_tostring(err)}`)
+			end
+		end
+	end)
+
+	if values.flag then
+		library.register_keybind(runtime, values.flag, values.title or 'Keybind', key.Name)
+	end
+
+	return {
+		get = function()
+			return key
+		end,
+	}
+end
+
+group_methods = {}
+
+function group_methods:create_toggle(flag, values)
+	if _type(flag) == 'table' then
+		values = flag
+		flag = values.flag
+	end
+	values = values or {}
+	values.flag = flag
+	return create_switch(self._frame, self:_next_order(), values, self._runtime)
+end
+
+function group_methods:create_slider(flag, values)
+	if _type(flag) == 'table' then
+		values = flag
+		flag = values.flag
+	end
+	values = values or {}
+	values.flag = flag
+	return create_slider(self._frame, self:_next_order(), values, self._runtime)
+end
+
+function group_methods:create_dropdown(flag, values)
+	if _type(flag) == 'table' then
+		values = flag
+		flag = values.flag
+	end
+	values = values or {}
+	values.flag = flag
+	return create_dropdown(self._frame, self:_next_order(), values, self._runtime)
+end
+
+function group_methods:create_button(flag, values)
+	if _type(flag) == 'table' then
+		values = flag
+	end
+	values = values or {}
+	return create_button(self._frame, self:_next_order(), values, self._runtime)
+end
+
+function group_methods:create_textbox(flag, values)
+	if _type(flag) == 'table' then
+		values = flag
+		flag = values.flag
+	end
+	values = values or {}
+	values.flag = flag
+	return create_textbox(self._frame, self:_next_order(), values, self._runtime)
+end
+
+function group_methods:create_keybind(flag, values)
+	if _type(flag) == 'table' then
+		values = flag
+		flag = values.flag
+	end
+	values = values or {}
+	values.flag = flag
+	return create_keybind(self._frame, self:_next_order(), values, self._runtime)
+end
+
+library.group_methods = group_methods
+
+library.new = library._new
+
+library.init = function(builder, runtime_type)
+	local runtime = library._new(runtime_type)
+	if _type(builder) == 'function' then
+		local ok, err = _pcall(builder, runtime)
+		if not ok then
+			warn(`[Angeli] {_tostring(err)}`)
+		end
+	end
+	return runtime
+end
+
+library.set_theme = function(name, persist)
+	return theme.apply(name, persist ~= false)
+end
+
+library.themes = function()
+	return theme.list()
+end
+
+library.profiles = function()
+	return save_manager.profiles()
+end
+
+library.save = function(name)
+	return save_manager.save(name)
+end
+
+library.load_profile = function(name)
+	return save_manager.load(name)
+end
+
+library.active_profile = function()
+	return save_manager._active
+end
+
+library.delete_profile = function(name)
+	return save_manager.delete(name)
+end
+
+
+return library
