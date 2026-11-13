@@ -1494,30 +1494,16 @@ function library:_refresh_array()
 			LayoutOrder = index,
 			Size = _new_udim2(0, 0, 0, 18),
 			BorderSizePixel = 0,
-			BackgroundTransparency = 0.15,
+			BackgroundTransparency = 0.25,
 			ClipsDescendants = true,
 			ZIndex = 151,
 			Parent = runtime._watermark,
 		})
 
 		theme.paint(row, 'BackgroundColor3', 'surface')
-		create_round(row, 3)
-		create_padding(row, 0, 0, 8, 8)
-
-		create_label({
-			AutomaticSize = Enum.AutomaticSize.X,
-			Size = _new_udim2(0, 0, 1, 0),
-			Text = title,
-			TextRole = 'text',
-			TextSize = runtime._small_size + 2,
-			TextXAlignment = Enum.TextXAlignment.Right,
-			ZIndex = 152,
-			Parent = row,
-		})
+		create_padding(row, 0, 0, 9, 8)
 
 		local bar = create_new('Frame', {
-			AnchorPoint = _new_vector2(1, 0.5),
-			Position = _new_udim2(1, 0, 0.5, 0),
 			Size = _new_udim2(0, 2, 1, 0),
 			BorderSizePixel = 0,
 			ZIndex = 152,
@@ -1525,6 +1511,17 @@ function library:_refresh_array()
 		})
 
 		theme.paint(bar, 'BackgroundColor3', 'accent')
+
+		create_label({
+			AutomaticSize = Enum.AutomaticSize.X,
+			Size = _new_udim2(0, 0, 1, 0),
+			Text = title,
+			TextRole = 'text',
+			TextSize = runtime._small_size + 2,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			ZIndex = 152,
+			Parent = row,
+		})
 
 		_insert(runtime._array_rows, row)
 	end
@@ -1552,8 +1549,8 @@ function library:set_watermark(text)
 
 	local root = create_new('Frame', {
 		Name = '_watermark',
-		AnchorPoint = _new_vector2(1, 0),
-		Position = _new_udim2(1, -10, 0, 64),
+		AnchorPoint = _new_vector2(0, 0),
+		Position = _new_udim2(0, 10, 0, 64),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		Size = _new_udim2(0, 0, 0, 0),
 		BackgroundTransparency = 1,
@@ -1564,20 +1561,20 @@ function library:set_watermark(text)
 
 	create_new('UIListLayout', {
 		FillDirection = Enum.FillDirection.Vertical,
-		HorizontalAlignment = Enum.HorizontalAlignment.Right,
+		HorizontalAlignment = Enum.HorizontalAlignment.Left,
 		SortOrder = Enum.SortOrder.LayoutOrder,
-		Padding = _new_udim(0, 2),
+		Padding = _new_udim(0, 1),
 		Parent = root,
 	})
 
 	local header = create_label({
 		LayoutOrder = 0,
 		AutomaticSize = Enum.AutomaticSize.X,
-		Size = _new_udim2(0, 0, 0, 20),
+		Size = _new_udim2(0, 0, 0, 22),
 		Text = text,
-		TextRole = 'text',
-		TextSize = runtime._label_size + 2,
-		TextXAlignment = Enum.TextXAlignment.Right,
+		TextRole = 'accent',
+		TextSize = runtime._label_size + 3,
+		TextXAlignment = Enum.TextXAlignment.Left,
 		ZIndex = 151,
 		Parent = root,
 	})
