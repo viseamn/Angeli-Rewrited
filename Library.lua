@@ -209,10 +209,13 @@ function library.attach(theme_module, save_module)
 end
 
 local interface_parent = (gethui and gethui()) or core_gui
-local previous = interface_parent:FindFirstChild('_angeli')
 
-if previous then
-	debris:AddItem(previous, 0)
+for _, name in { '_angeli', '_angeli_notify' } do
+	local previous = interface_parent:FindFirstChild(name)
+
+	if previous then
+		debris:AddItem(previous, 0)
+	end
 end
 
 function library:_persist_state()
@@ -369,13 +372,28 @@ function library:_init()
 
 	self._scale_object = scale_object
 
+	local notify_gui = create_new('ScreenGui', {
+		Name = '_angeli_notify',
+		ResetOnSpawn = false,
+		IgnoreGuiInset = true,
+		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+		DisplayOrder = 10,
+		Parent = interface_parent,
+	})
+
+	if syn and syn.protect_gui then
+		syn.protect_gui(notify_gui)
+	end
+
+	self._notify_gui = notify_gui
+
 	local notification_holder = create_new('Frame', {
 		Name = '_notifications',
 		BackgroundTransparency = 1,
 		Size = _new_udim2(1, 0, 1, 0),
 		BorderSizePixel = 0,
 		ZIndex = 199,
-		Parent = gui,
+		Parent = notify_gui,
 	})
 
 	create_padding(notification_holder, 8, 8, 12, 12)
