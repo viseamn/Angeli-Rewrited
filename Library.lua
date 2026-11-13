@@ -59,6 +59,9 @@ local WINDOW_WIDTH = 600
 local WINDOW_HEIGHT = 420
 local SIDEBAR_WIDTH = 160
 local ROW_HEIGHT = 24
+local COLUMN_MARGIN = 10
+local COLUMN_GAP = 12
+local COLUMN_WIDTH = (WINDOW_WIDTH - SIDEBAR_WIDTH - COLUMN_MARGIN * 2 - COLUMN_GAP) / 2
 
 local theme
 local save_manager
@@ -405,7 +408,7 @@ function library:_init()
 	create_divider(logo_area, _new_udim2(0, 0, 1, -1), _new_udim2(1, 0, 0, 1))
 
 	local pin = create_new('Frame', {
-		Position = _new_udim2(0, 14, 0, 0),
+		Position = _new_udim2(0, 3, 0, 0),
 		Size = _new_udim2(0, 2, 0, 12),
 		BorderSizePixel = 0,
 		ZIndex = 50,
@@ -416,7 +419,7 @@ function library:_init()
 	create_pill(pin)
 
 	local tabs_container = create_scroller(sidebar, _new_udim2(0, 0, 0, 48), _new_udim2(1, 0, 1, -48))
-	create_padding(tabs_container, 6, 16, 10, 10)
+	create_padding(tabs_container, 12, 16, 10, 10)
 	create_list(tabs_container, 6)
 
 	local content = create_new('Frame', {
@@ -619,7 +622,7 @@ function library:_move_pin()
 	local button = self._active_tab._button
 	local target = _new_udim2(
 		0,
-		14,
+		3,
 		0,
 		(button.AbsolutePosition.Y - self._sidebar.AbsolutePosition.Y + button.AbsoluteSize.Y / 2) / self._ui_scale - 6
 	)
@@ -746,17 +749,17 @@ function library:create_tab(title, icon, order, category_name)
 		local column = create_scroller(
 			runtime._sections,
 			_new_udim2(0, x - 2, 0, 0),
-			_new_udim2(0, (WINDOW_WIDTH - SIDEBAR_WIDTH - 32 - 12) / 2 + 4, 1, 0)
+			_new_udim2(0, COLUMN_WIDTH + 4, 1, 0)
 		)
-		create_padding(column, 16, 16, 2, 2)
+		create_padding(column, 12, 16, 2, 2)
 		create_list(column, 12)
 		column.Visible = false
 		column_base[column] = x - 2
 		return column
 	end
 
-	local left = create_column(16)
-	local right = create_column(16 + (WINDOW_WIDTH - SIDEBAR_WIDTH - 32 - 12) / 2 + 12)
+	local left = create_column(COLUMN_MARGIN)
+	local right = create_column(COLUMN_MARGIN + COLUMN_WIDTH + COLUMN_GAP)
 
 	local data = {
 		_button = button,
