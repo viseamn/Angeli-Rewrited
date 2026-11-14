@@ -1753,6 +1753,373 @@ local function resolve_key(value)
 	return nil
 end
 
+local function open_settings_panel(runtime, anchor, entries, title)
+	if runtime._settings_panel then
+		runtime._settings_panel:Destroy()
+		runtime._settings_panel = nil
+	end
+
+	if runtime._settings_backdrop then
+		runtime._settings_backdrop:Destroy()
+		runtime._settings_backdrop = nil
+	end
+
+	entries = entries or {}
+
+	local width = 224
+	local padding = 10
+	local header_height = 18
+	local gap = 6
+	local total = 0
+
+	for _, entry in entries do
+		total += (entry.type == 'slider' and 40 or 26) + gap
+	end
+
+	local height = padding + header_height + 6 + total - gap + padding
+	local origin = anchor.AbsolutePosition
+	local size = anchor.AbsoluteSize
+	local inset = gui_service:GetGuiInset()
+	local x = _max(8, origin.X + size.X - width)
+
+	local backdrop = create_new('TextButton', {
+		BackgroundTransparency = 1,
+		Size = _new_udim2(1, 0, 1, 0),
+		Text = '',
+		AutoButtonColor = false,
+		BorderSizePixel = 0,
+		ZIndex = 498,
+		Parent = runtime._ui,
+	})
+
+	local panel = create_new('Frame', {
+		Position = _new_udim2(0, x, 0, origin.Y + size.Y + 6 - inset.Y),
+		Size = _new_udim2(0, width, 0, height),
+		BorderSizePixel = 0,
+		ZIndex = 500,
+		Parent = runtime._ui,
+	})
+
+	theme.paint(panel, 'BackgroundColor3', 'surface')
+	create_round(panel, 8)
+	create_outline(panel)
+
+	create_label({
+		Position = _new_udim2(0, padding, 0, padding),
+		Size = _new_udim2(1, -padding * 2, 0, header_height),
+		Text = string.upper(_tostring(title or 'Settings')),
+		TextRole = 'text_dim',
+		TextSize = runtime._small_size,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		ZIndex = 501,
+		Parent = panel,
+	})
+
+	local function close()
+		if panel.Parent then
+			panel:Destroy()
+		end
+
+		if backdrop.Parent then
+			backdrop:Destroy()
+		end
+
+		runtime._settings_panel = nil
+		runtime._settings_backdrop = nil
+	end
+
+	backdrop.MouseButton1Click:Connect(close)
+
+	runtime._settings_panel = panel
+	runtime._settings_backdrop = backdrop
+
+	local y = padding + header_height + 6
+
+	for _, entry in entries do
+		local is_slider = entry.type == 'slider'
+		local row_height = is_slider and 40 or 26
+
+		local row = create_new('Frame', {
+			BackgroundTransparency = 1,
+			Position = _new_udim2(0, padding, 0, y),
+			Size = _new_udim2(1, -padding * 2, 0, row_height),
+			ZIndex = 501,
+			Parent = panel,
+		})
+
+		create_label({
+			Position = _new_udim2(0, 0, 0, is_slider and 1 or 0),
+			Size = _new_udim2(1, is_slider and 0 or -104, 0, 18),
+			Text = entry.title or '',
+			TextRole = 'text',
+			TextSize = runtime._label_size,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextTruncate = Enum.TextTruncate.AtEnd,
+			ZIndex = 502,
+			Parent = row,
+		})
+
+		if entry.type == 'switch' then
+			local state = entry.value == true
+
+			if entry.flag and _type(runtime._flags[entry.flag]) == 'boolean' then
+				state = runtime._flags[entry.flag]
+			end
+
+			local track = create_new('Frame', {
+				AnchorPoint = _new_vector2(1, 0.5),
+				Position = _new_udim2(1, 0, 0.5, 0),
+				Size = _new_udim2(0, 26, 0, 14),
+				BorderSizePixel = 0,
+				ZIndex = 502,
+				Parent = row,
+			})
+
+			create_pill(track)
+			theme.paint(track, 'BackgroundColor3', state and 'accent' or 'surface_alt')
+
+			local knob = create_new('Frame', {
+				AnchorPoint = _new_vector2(0, 0.5),
+				Position = _new_udim2(0, state and 14 or 2, 0.5, 0),
+				Size = _new_udim2(0, 10, 0, 10),
+				BorderSizePixel = 0,
+				ZIndex = 503,
+				Parent = track,
+			})
+
+			create_pill(knob)
+			theme.paint(knob, 'BackgroundColor3', state and 'accent_text' or 'text_dim')
+
+			local hit = create_new('TextButton', {
+				BackgroundTransparency = 1,
+				Size = _new_udim2(1, 0, 1, 0),
+				Text = '',
+				AutoButtonColor = false,
+				BorderSizePixel = 0,
+				ZIndex = 504,
+				Parent = row,
+			})
+
+			hit.MouseButton1Click:Connect(function()
+				state = not state
+				knob.Position = _new_udim2(0, state and 14 or 2, 0.5, 0)
+				theme.paint(track, 'BackgroundColor3', state and 'accent' or 'surface_alt')
+				theme.paint(knob, 'BackgroundColor3', state and 'accent_text' or 'text_dim')
+
+				if entry.flag then
+					runtime._flags[entry.flag] = state
+					library._save(runtime)
+				end
+
+				if entry.callback then
+					_pcall(entry.callback, state)
+				end
+			end)
+		elseif is_slider then
+			local minimum = entry.minimum or 0
+			local maximum = entry.maximum or 100
+			local span = maximum - minimum
+			local value = entry.value or minimum
+
+			if span <= 0 then
+				span = 1
+			end
+
+			if entry.flag and _type(runtime._flags[entry.flag]) == 'number' then
+				value = runtime._flags[entry.flag]
+			end
+
+			local readout = create_label({
+				Position = _new_udim2(1, -44, 0, 1),
+				Size = _new_udim2(0, 44, 0, 18),
+				Text = _tostring(value),
+				TextRole = 'text',
+				TextSize = runtime._label_size,
+				TextXAlignment = Enum.TextXAlignment.Right,
+				ZIndex = 502,
+				Parent = row,
+			})
+
+			local track = create_new('Frame', {
+				Position = _new_udim2(0, 0, 0, 24),
+				Size = _new_udim2(1, 0, 0, 6),
+				BorderSizePixel = 0,
+				ZIndex = 502,
+				Parent = row,
+			})
+
+			create_pill(track)
+			theme.paint(track, 'BackgroundColor3', 'surface_alt')
+
+			local fill = create_new('Frame', {
+				Size = _new_udim2((value - minimum) / span, 0, 1, 0),
+				BorderSizePixel = 0,
+				ZIndex = 503,
+				Parent = track,
+			})
+
+			create_pill(fill)
+			theme.paint(fill, 'BackgroundColor3', 'accent')
+
+			local function set_value(next_value, commit)
+				value = _clamp(next_value, minimum, maximum)
+				readout.Text = _tostring(value)
+				fill.Size = _new_udim2((value - minimum) / span, 0, 1, 0)
+
+				if not commit then
+					return
+				end
+
+				if entry.flag then
+					runtime._flags[entry.flag] = value
+					library._save(runtime)
+				end
+
+				if entry.callback then
+					_pcall(entry.callback, value)
+				end
+			end
+
+			local hit = create_new('TextButton', {
+				BackgroundTransparency = 1,
+				Position = _new_udim2(0, 0, 0, 16),
+				Size = _new_udim2(1, 0, 1, -16),
+				Text = '',
+				AutoButtonColor = false,
+				BorderSizePixel = 0,
+				ZIndex = 504,
+				Parent = row,
+			})
+
+			local dragging = false
+
+			local function from_input(input)
+				local track_width = track.AbsoluteSize.X
+
+				if track_width <= 0 then
+					return
+				end
+
+				local ratio = _clamp((input.Position.X - track.AbsolutePosition.X) / track_width, 0, 1)
+				set_value(minimum + span * ratio, true)
+			end
+
+			hit.InputBegan:Connect(function(input)
+				if
+					input.UserInputType ~= Enum.UserInputType.MouseButton1
+					and input.UserInputType ~= Enum.UserInputType.Touch
+				then
+					return
+				end
+
+				dragging = true
+				from_input(input)
+			end)
+
+			watch(user_input_service.InputChanged, function(input)
+				if not dragging or not panel.Parent then
+					return
+				end
+
+				if
+					input.UserInputType ~= Enum.UserInputType.MouseMovement
+					and input.UserInputType ~= Enum.UserInputType.Touch
+				then
+					return
+				end
+
+				from_input(input)
+			end)
+
+			watch(user_input_service.InputEnded, function(input)
+				if
+					input.UserInputType == Enum.UserInputType.MouseButton1
+					or input.UserInputType == Enum.UserInputType.Touch
+				then
+					dragging = false
+				end
+			end)
+		elseif entry.type == 'dropdown' then
+			local options = entry.options or {}
+			local index = 1
+			local current = entry.value
+
+			if entry.flag and _type(runtime._flags[entry.flag]) == 'string' then
+				current = runtime._flags[entry.flag]
+			end
+
+			for position, option in options do
+				if option == current then
+					index = position
+				end
+			end
+
+			local chip = create_new('TextButton', {
+				AnchorPoint = _new_vector2(1, 0.5),
+				Position = _new_udim2(1, 0, 0.5, 0),
+				Size = _new_udim2(0, 100, 0, 20),
+				FontFace = FONT,
+				Text = _tostring(options[index] or 'none'),
+				TextSize = runtime._label_size,
+				AutoButtonColor = false,
+				BorderSizePixel = 0,
+				ZIndex = 504,
+				Parent = row,
+			})
+
+			theme.paint(chip, 'BackgroundColor3', 'surface_alt')
+			theme.paint(chip, 'TextColor3', 'text')
+			create_round(chip, 5)
+
+			chip.MouseButton1Click:Connect(function()
+				if #options == 0 then
+					return
+				end
+
+				index = index % #options + 1
+				chip.Text = _tostring(options[index])
+
+				if entry.flag then
+					runtime._flags[entry.flag] = options[index]
+					library._save(runtime)
+				end
+
+				if entry.callback then
+					_pcall(entry.callback, options[index])
+				end
+			end)
+		else
+			local chip = create_new('TextButton', {
+				AnchorPoint = _new_vector2(1, 0.5),
+				Position = _new_udim2(1, 0, 0.5, 0),
+				Size = _new_udim2(0, 100, 0, 22),
+				FontFace = FONT,
+				Text = entry.title or 'Apply',
+				TextSize = runtime._label_size,
+				AutoButtonColor = false,
+				BorderSizePixel = 0,
+				ZIndex = 504,
+				Parent = row,
+			})
+
+			theme.paint(chip, 'BackgroundColor3', 'surface_alt')
+			theme.paint(chip, 'TextColor3', 'text')
+			create_round(chip, 5)
+
+			chip.MouseButton1Click:Connect(function()
+				if entry.callback then
+					_pcall(entry.callback)
+				end
+
+				close()
+			end)
+		end
+
+		y += row_height + gap
+	end
+end
+
 local function create_switch(parent, order, values, runtime)
 	local state = values.default == true
 	local key_flag = values.keybind_flag or (values.flag and `{values.flag}_key`)
@@ -2023,110 +2390,21 @@ local function create_switch(parent, order, values, runtime)
 		end)
 
 		gear.MouseButton1Click:Connect(function()
-			if runtime._option_menu then
-				runtime._option_menu:Destroy()
-				runtime._option_menu = nil
+			local entries = values.settings
+
+			if _type(entries) ~= 'table' then
+				entries = {
+					{
+						type = 'button',
+						title = 'Reset',
+						callback = function()
+							set_value(values.default == true, true)
+						end,
+					},
+				}
 			end
 
-			if runtime._option_backdrop then
-				runtime._option_backdrop:Destroy()
-				runtime._option_backdrop = nil
-			end
-
-			local width = 132
-			local height = 56
-			local origin = gear.AbsolutePosition
-			local size = gear.AbsoluteSize
-			local inset = gui_service:GetGuiInset()
-			local x = _max(8, origin.X + size.X - width)
-
-			local backdrop = create_new('TextButton', {
-				BackgroundTransparency = 1,
-				Size = _new_udim2(1, 0, 1, 0),
-				Text = '',
-				AutoButtonColor = false,
-				BorderSizePixel = 0,
-				ZIndex = 499,
-				Parent = runtime._ui,
-			})
-
-			runtime._option_backdrop = backdrop
-
-			local menu = create_new('Frame', {
-				Position = _new_udim2(0, x, 0, origin.Y + size.Y + 4 - inset.Y),
-				Size = _new_udim2(0, width, 0, height),
-				BorderSizePixel = 0,
-				ZIndex = 500,
-				Parent = runtime._ui,
-			})
-
-			theme.paint(menu, 'BackgroundColor3', 'surface')
-			create_round(menu, 6)
-			create_outline(menu)
-			create_padding(menu, 4, 4, 4, 4)
-			create_list(menu, 0)
-
-			runtime._option_menu = menu
-
-			local notify_entry = create_new('TextButton', {
-				BackgroundTransparency = 1,
-				LayoutOrder = 1,
-				Size = _new_udim2(1, 0, 0, 24),
-				FontFace = FONT,
-				Text = `Notify: {notify_on and 'On' or 'Off'}`,
-				TextSize = runtime._label_size,
-				TextXAlignment = Enum.TextXAlignment.Left,
-				AutoButtonColor = false,
-				BorderSizePixel = 0,
-				ZIndex = 501,
-				Parent = menu,
-			})
-
-			theme.paint(notify_entry, 'TextColor3', 'text')
-			create_padding(notify_entry, 0, 0, 8, 8)
-
-			notify_entry.MouseButton1Click:Connect(function()
-				notify_on = not notify_on
-				notify_entry.Text = `Notify: {notify_on and 'On' or 'Off'}`
-
-				if notify_flag then
-					runtime._flags[notify_flag] = notify_on
-					library._save(runtime)
-				end
-
-				paint_icons(false)
-			end)
-
-			local reset_entry = create_new('TextButton', {
-				BackgroundTransparency = 1,
-				LayoutOrder = 2,
-				Size = _new_udim2(1, 0, 0, 24),
-				FontFace = FONT,
-				Text = 'Reset',
-				TextSize = runtime._label_size,
-				TextXAlignment = Enum.TextXAlignment.Left,
-				AutoButtonColor = false,
-				BorderSizePixel = 0,
-				ZIndex = 501,
-				Parent = menu,
-			})
-
-			theme.paint(reset_entry, 'TextColor3', 'text_dim')
-			create_padding(reset_entry, 0, 0, 8, 8)
-
-			local function close_menu()
-				menu:Destroy()
-				backdrop:Destroy()
-				runtime._option_menu = nil
-				runtime._option_backdrop = nil
-			end
-
-			reset_entry.MouseButton1Click:Connect(function()
-				set_value(values.default == true, true)
-				close_menu()
-			end)
-
-			backdrop.MouseButton1Click:Connect(close_menu)
+			open_settings_panel(runtime, gear, entries, values.title)
 		end)
 	end
 	if chip then
