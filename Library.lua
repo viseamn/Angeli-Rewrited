@@ -207,6 +207,48 @@ local create_scroller = LPH_NO_VIRTUALIZE(function(parent, position, size)
 	return frame
 end)
 
+local icons
+
+local function load_icons()
+	if icons ~= nil then
+		return icons or nil
+	end
+
+	icons = false
+
+	if _type(getcustomasset) ~= 'function' or _type(loadstring) ~= 'function' then
+		return nil
+	end
+
+	local ok, module = _pcall(function()
+		local source = game:HttpGet('https://raw.githubusercontent.com/notpoiu/Molto/main/source.lua')
+		return loadstring(source)()
+	end)
+
+	if ok and _type(module) == 'table' and _type(module.GetAsset) == 'function' then
+		icons = module
+		return module
+	end
+
+	return nil
+end
+
+local function icon_asset(name)
+	local module = load_icons()
+
+	if not module then
+		return nil
+	end
+
+	local ok, data = _pcall(module.GetAsset, name)
+
+	if ok and _type(data) == 'table' and _type(data.Url) == 'string' then
+		return data
+	end
+
+	return nil
+end
+
 library = {
 	_flags = {},
 	_controls = {},
@@ -714,11 +756,13 @@ function library:_move_pin()
 	end
 
 	local button = self._active_tab._button
+	local scale = self._ui_scale
+	local gap = (button.AbsolutePosition.X - self._sidebar.AbsolutePosition.X) / scale
 	local target = _new_udim2(
 		0,
-		4,
+		gap / 2 - 1,
 		0,
-		(button.AbsolutePosition.Y - self._sidebar.AbsolutePosition.Y + button.AbsoluteSize.Y / 2) / self._ui_scale - 8
+		(button.AbsolutePosition.Y - self._sidebar.AbsolutePosition.Y + button.AbsoluteSize.Y / 2) / scale - 8
 	)
 
 	_create_tween(
@@ -1805,82 +1849,127 @@ local function create_switch(parent, order, values, runtime)
 		})
 	end
 
-	local bell = icon_button(icon_right)
+	local function build_icon(button, name, size)
+		local data = icon_asset(name)
 
-	_insert(bell_parts, create_new('Frame', {
-		Position = _new_udim2(0, 6, 0, 1),
-		Size = _new_udim2(0, 4, 0, 3),
-		BorderSizePixel = 0,
-		ZIndex = 6,
-		Parent = bell,
-	}))
+		if not data then
+			return nil
+		end
 
-	create_round(bell_parts[1], 1)
-
-	_insert(bell_parts, create_new('Frame', {
-		Position = _new_udim2(0, 3, 0, 4),
-		Size = _new_udim2(0, 10, 0, 8),
-		BorderSizePixel = 0,
-		ZIndex = 6,
-		Parent = bell,
-	}))
-
-	create_round(bell_parts[2], 5)
-
-	_insert(bell_parts, create_new('Frame', {
-		Position = _new_udim2(0, 6, 0, 12),
-		Size = _new_udim2(0, 4, 0, 4),
-		BorderSizePixel = 0,
-		ZIndex = 6,
-		Parent = bell,
-	}))
-
-	create_pill(bell_parts[3])
-
-	local gear = icon_button(icon_right - 18)
-
-	_insert(gear_parts, create_new('Frame', {
-		Position = _new_udim2(0, 2, 0, 2),
-		Size = _new_udim2(0, 12, 0, 12),
-		BorderSizePixel = 0,
-		ZIndex = 6,
-		Parent = gear,
-	}))
-
-	create_pill(gear_parts[1])
-
-	for _, spot in { { 7, 0 }, { 7, 14 }, { 0, 7 }, { 14, 7 } } do
-		_insert(gear_parts, create_new('Frame', {
-			Position = _new_udim2(0, spot[1], 0, spot[2]),
-			Size = _new_udim2(0, 2, 0, 2),
+		local image = create_new('ImageLabel', {
+			AnchorPoint = _new_vector2(0.5, 0.5),
+			Position = _new_udim2(0.5, 0, 0.5, 0),
+			Size = _new_udim2(0, size, 0, size),
+			BackgroundTransparency = 1,
+			Image = data.Url,
+			ImageRectSize = data.ImageRectSize,
+			ImageRectOffset = data.ImageRectOffset,
 			BorderSizePixel = 0,
 			ZIndex = 6,
-			Parent = gear,
-		}))
+			Parent = button,
+		})
+
+		return function(role)
+			theme.paint(image, 'ImageColor3', role)
+		end
 	end
 
-	local gear_hole = create_new('Frame', {
-		Position = _new_udim2(0, 5, 0, 5),
-		Size = _new_udim2(0, 6, 0, 6),
-		BorderSizePixel = 0,
-		ZIndex = 7,
-		Parent = gear,
-	})
+	local function build_bell(button)
+		local parts = {}
 
-	create_pill(gear_hole)
-	theme.paint(gear_hole, 'BackgroundColor3', 'surface')
+		local stem = create_new('Frame', {
+			Position = _new_udim2(0, 6, 0, 1),
+			Size = _new_udim2(0, 4, 0, 3),
+			BorderSizePixel = 0,
+			ZIndex = 6,
+			Parent = button,
+		})
+
+		create_round(stem, 1)
+		_insert(parts, stem)
+
+		local dome = create_new('Frame', {
+			Position = _new_udim2(0, 3, 0, 4),
+			Size = _new_udim2(0, 10, 0, 8),
+			BorderSizePixel = 0,
+			ZIndex = 6,
+			Parent = button,
+		})
+
+		create_round(dome, 5)
+		_insert(parts, dome)
+
+		local clapper = create_new('Frame', {
+			Position = _new_udim2(0, 6, 0, 12),
+			Size = _new_udim2(0, 4, 0, 4),
+			BorderSizePixel = 0,
+			ZIndex = 6,
+			Parent = button,
+		})
+
+		create_pill(clapper)
+		_insert(parts, clapper)
+
+		return function(role)
+			for _, part in parts do
+				theme.paint(part, 'BackgroundColor3', role)
+			end
+		end
+	end
+
+	local function build_gear(button)
+		local parts = {}
+
+		local ring = create_new('Frame', {
+			Position = _new_udim2(0, 2, 0, 2),
+			Size = _new_udim2(0, 12, 0, 12),
+			BorderSizePixel = 0,
+			ZIndex = 6,
+			Parent = button,
+		})
+
+		create_pill(ring)
+		_insert(parts, ring)
+
+		for _, spot in { { 7, 0 }, { 7, 14 }, { 0, 7 }, { 14, 7 } } do
+			local nub = create_new('Frame', {
+				Position = _new_udim2(0, spot[1], 0, spot[2]),
+				Size = _new_udim2(0, 2, 0, 2),
+				BorderSizePixel = 0,
+				ZIndex = 6,
+				Parent = button,
+			})
+
+			_insert(parts, nub)
+		end
+
+		local hole = create_new('Frame', {
+			Position = _new_udim2(0, 5, 0, 5),
+			Size = _new_udim2(0, 6, 0, 6),
+			BorderSizePixel = 0,
+			ZIndex = 7,
+			Parent = button,
+		})
+
+		create_pill(hole)
+		theme.paint(hole, 'BackgroundColor3', 'surface')
+
+		return function(role)
+			for _, part in parts do
+				theme.paint(part, 'BackgroundColor3', role)
+			end
+		end
+	end
+
+	local bell = icon_button(icon_right)
+	local gear = icon_button(icon_right - 18)
+
+	local paint_bell = build_icon(bell, 'bell', 14) or build_bell(bell)
+	local paint_gear = build_icon(gear, 'settings', 14) or build_gear(gear)
 
 	local function paint_icons(hovered)
-		local bell_role = notify_on and 'accent' or 'text_dim'
-		local gear_role = hovered and 'text' or 'text_dim'
-
-		for _, part in bell_parts do
-			theme.paint(part, 'BackgroundColor3', bell_role)
-		end
-
-		for _, part in gear_parts do
-			theme.paint(part, 'BackgroundColor3', gear_role)
-		end
+		paint_bell(notify_on and 'accent' or 'text_dim')
+		paint_gear(hovered and 'text' or 'text_dim')
 	end
 
 	paint_icons(false)
