@@ -56,13 +56,19 @@ local _type = type
 
 local FONT = Font.new('rbxasset://fonts/families/GothamSSm.json', Enum.FontWeight.SemiBold, Enum.FontStyle.Normal)
 
-local WINDOW_WIDTH = 600
-local WINDOW_HEIGHT = 420
+local WINDOW_WIDTH = 640
+local WINDOW_HEIGHT = 460
 local SIDEBAR_WIDTH = 160
 local ROW_HEIGHT = 24
 local COLUMN_MARGIN = 10
 local COLUMN_GAP = 12
 local COLUMN_WIDTH = (WINDOW_WIDTH - SIDEBAR_WIDTH - COLUMN_MARGIN * 2 - COLUMN_GAP) / 2
+
+local NOTIFY_MOTION = {
+	['bottom-right'] = { enter = 1, exit = 1 },
+	['bottom-left'] = { enter = 1, exit = -1 },
+	['top-right'] = { enter = -1, exit = 1 },
+}
 
 local NOTIFY_ANCHORS = {
 	['top-right'] = { horizontal = Enum.HorizontalAlignment.Right, vertical = Enum.VerticalAlignment.Top },
@@ -1750,8 +1756,8 @@ function library:notify(message)
 	local width = runtime._is_mobile and 300 or 340
 	local height = 48
 	local duration = 2.6
-	local from_top = string.find(_tostring(runtime._notify_position), 'top', 1, true) ~= nil
-	local offset = from_top and -width or width
+	local motion = NOTIFY_MOTION[runtime._notify_position] or NOTIFY_MOTION['bottom-right']
+	local offset = width * motion.enter
 
 	runtime._notification_order += 1
 
@@ -1827,8 +1833,8 @@ function library:notify(message)
 
 	local bar = create_new('Frame', {
 		AnchorPoint = _new_vector2(0, 1),
-		Position = _new_udim2(0, 6, 1, 0),
-		Size = _new_udim2(1, -12, 0, 2),
+		Position = _new_udim2(0, 8, 1, -2),
+		Size = _new_udim2(1, -16, 0, 3),
 		BorderSizePixel = 0,
 		BackgroundTransparency = 1,
 		ZIndex = 203,
@@ -1836,6 +1842,7 @@ function library:notify(message)
 	})
 
 	theme.paint(bar, 'BackgroundColor3', 'accent')
+	create_pill(bar)
 
 	local active = runtime._notifications
 
@@ -1875,7 +1882,7 @@ function library:notify(message)
 	_create_tween(tween_service, icon_stroke, _new_tween_info(0.2), { Transparency = 0 }):Play()
 
 	_create_tween(tween_service, bar, _new_tween_info(duration, Enum.EasingStyle.Linear), {
-		Size = _new_udim2(0, 0, 0, 2),
+		Size = _new_udim2(0, 0, 0, 3),
 		BackgroundTransparency = 0,
 	}):Play()
 
@@ -1893,7 +1900,7 @@ function library:notify(message)
 		}):Play()
 
 		_create_tween(tween_service, card, _new_tween_info(0.26, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
-			Position = _new_udim2(0, -offset, 0, 0),
+			Position = _new_udim2(0, width * motion.exit, 0, 0),
 			BackgroundTransparency = 1,
 		}):Play()
 
@@ -2972,6 +2979,8 @@ local function create_button(parent, order, values, runtime)
 		FontFace = FONT,
 		Text = values.title or 'Button',
 		TextSize = runtime._label_size,
+		TextWrapped = false,
+		TextTruncate = Enum.TextTruncate.AtEnd,
 		AutoButtonColor = false,
 		BorderSizePixel = 0,
 		Parent = parent,
