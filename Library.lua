@@ -1773,9 +1773,22 @@ local function create_switch(parent, order, values, runtime)
 		Parent = parent,
 	})
 
+	local chip_width = 0
+
+	if key then
+		local measured = text_service:GetTextSize(
+			key.Name,
+			runtime._small_size + 1,
+			Enum.Font.GothamSemibold,
+			_new_vector2(200, 18)
+		).X
+
+		chip_width = _max(18, measured + 12)
+	end
+
 	local icon_count = (values.notify and 1 or 0) + (values.settings and 1 or 0)
-	local icon_right = key and -60 or -36
-	local label_edge = icon_count > 0 and (icon_right - 18 * icon_count) or (key and -54 or -36)
+	local icon_right = key and -(36 + chip_width + 6) or -36
+	local label_edge = icon_count > 0 and (icon_right - 18 * icon_count) or (key and -(36 + chip_width) or -36)
 
 	local label = create_label({
 		Size = _new_udim2(1, label_edge - 6, 1, 0),
@@ -1819,8 +1832,7 @@ local function create_switch(parent, order, values, runtime)
 		chip = create_new('TextButton', {
 			AnchorPoint = _new_vector2(1, 0.5),
 			Position = _new_udim2(1, -36, 0.5, 0),
-			Size = _new_udim2(0, 18, 0, 18),
-			AutomaticSize = Enum.AutomaticSize.X,
+			Size = _new_udim2(0, chip_width, 0, 18),
 			FontFace = FONT,
 			Text = key.Name,
 			TextSize = runtime._small_size + 1,
@@ -1835,11 +1847,6 @@ local function create_switch(parent, order, values, runtime)
 		create_round(chip, 4)
 		create_outline(chip)
 		create_padding(chip, 0, 0, 5, 5)
-
-		create_new('UISizeConstraint', {
-			MinSize = _new_vector2(18, 18),
-			Parent = chip,
-		})
 	end
 
 	local notify_flag = values.flag and `{values.flag}_notify`
