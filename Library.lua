@@ -100,6 +100,14 @@ local function trim(value)
 	return string.gsub(text, '%s+$', '')
 end
 
+local function format_value(value)
+	if value == _floor(value) then
+		return _tostring(_floor(value))
+	end
+
+	return string.format('%.2f', value)
+end
+
 local function shallow_copy(source)
 	local copy = {}
 	for index, value in source or {} do
@@ -2226,7 +2234,7 @@ local function create_slider(parent, order, values, runtime)
 		AnchorPoint = _new_vector2(1, 0),
 		Position = _new_udim2(1, 0, 0, 0),
 		Size = _new_udim2(0, 48, 0, 16),
-		Text = _tostring(value),
+		Text = format_value(value),
 		TextRole = 'text',
 		TextSize = runtime._label_size,
 		TextXAlignment = Enum.TextXAlignment.Right,
@@ -2282,7 +2290,7 @@ local function create_slider(parent, order, values, runtime)
 			value = _floor(value + 0.5)
 		end
 
-		value_label.Text = _tostring(value)
+		value_label.Text = format_value(value)
 
 		local target = (value - minimum) / (maximum - minimum)
 		if animate then
@@ -3343,12 +3351,17 @@ open_settings_panel = function(runtime, anchor, entries, title)
 		runtime._settings_panel = nil
 	end
 
+	if runtime._settings_shadow then
+		runtime._settings_shadow:Destroy()
+		runtime._settings_shadow = nil
+	end
+
 	if runtime._settings_backdrop then
 		runtime._settings_backdrop:Destroy()
 		runtime._settings_backdrop = nil
 	end
 
-	local width = 224
+	local width = 200
 	local origin = anchor.AbsolutePosition
 	local size = anchor.AbsoluteSize
 	local inset = gui_service:GetGuiInset()
@@ -3367,8 +3380,23 @@ open_settings_panel = function(runtime, anchor, entries, title)
 		Parent = runtime._ui,
 	})
 
+	local y = origin.Y + size.Y + 6 - inset.Y
+
+	local shadow = create_new('Frame', {
+		Position = _new_udim2(0, x + 2, 0, y + 4),
+		Size = _new_udim2(0, width, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+		BackgroundTransparency = 0.55,
+		BorderSizePixel = 0,
+		ZIndex = 499,
+		Parent = runtime._ui,
+	})
+
+	create_round(shadow, 8)
+
 	local panel = create_new('Frame', {
-		Position = _new_udim2(0, x, 0, origin.Y + size.Y + 6 - inset.Y),
+		Position = _new_udim2(0, x, 0, y),
 		Size = _new_udim2(0, width, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		BorderSizePixel = 0,
@@ -3379,8 +3407,8 @@ open_settings_panel = function(runtime, anchor, entries, title)
 	theme.paint(panel, 'BackgroundColor3', 'surface')
 	create_round(panel, 8)
 	create_outline(panel)
-	create_padding(panel, 10, 10, 12, 12)
-	create_list(panel, 10)
+	create_padding(panel, 8, 8, 10, 10)
+	create_list(panel, 8)
 
 	create_label({
 		LayoutOrder = 0,
@@ -3399,17 +3427,23 @@ open_settings_panel = function(runtime, anchor, entries, title)
 			panel:Destroy()
 		end
 
+		if shadow.Parent then
+			shadow:Destroy()
+		end
+
 		if backdrop.Parent then
 			backdrop:Destroy()
 		end
 
 		runtime._settings_panel = nil
+		runtime._settings_shadow = nil
 		runtime._settings_backdrop = nil
 	end
 
 	backdrop.MouseButton1Click:Connect(close)
 
 	runtime._settings_panel = panel
+	runtime._settings_shadow = shadow
 	runtime._settings_backdrop = backdrop
 
 	local builders = {
