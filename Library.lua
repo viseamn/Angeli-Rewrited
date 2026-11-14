@@ -3597,39 +3597,53 @@ library.init = function(builder, runtime_type)
 	return runtime
 end
 
-library.set_theme = function(name, persist)
+local function call_args(self, ...)
+	if _type(self) == 'table' then
+		return ...
+	end
+
+	return self, ...
+end
+
+function library:set_theme(name, persist)
+	name, persist = call_args(self, name, persist)
 	return theme.apply(name, persist ~= false)
 end
 
-library.themes = function()
+function library:themes()
 	return theme.list()
 end
 
-library.profiles = function()
+function library:profiles()
 	return save_manager.profiles()
 end
 
-library.save = function(name)
+function library:save(name)
+	name = call_args(self, name)
 	return save_manager.save(name)
 end
 
-library.load_profile = function(name)
+function library:load_profile(name)
+	name = call_args(self, name)
 	return save_manager.load(name)
 end
 
-library.active_profile = function()
+function library:active_profile()
 	return save_manager._active
 end
 
-library.delete_profile = function(name)
+function library:delete_profile(name)
+	name = call_args(self, name)
 	return save_manager.delete(name)
 end
 
-library.export_profile = function(name)
+function library:export_profile(name)
+	name = call_args(self, name)
 	return save_manager.export(name)
 end
 
-library.import_profile = function(text, name)
+function library:import_profile(text, name)
+	text, name = call_args(self, text, name)
 	return save_manager.import(text, name)
 end
 
