@@ -3362,13 +3362,17 @@ open_settings_panel = function(runtime, anchor, entries, title)
 	end
 
 	local width = 184
+	local scale = runtime._ui_scale
+	local container = runtime._container
+	local container_pos = container.AbsolutePosition
 	local origin = anchor.AbsolutePosition
 	local size = anchor.AbsoluteSize
-	local inset = gui_service:GetGuiInset()
-	local container = runtime._container
-	local left = container.AbsolutePosition.X + SIDEBAR_WIDTH + 8
-	local right = container.AbsolutePosition.X + container.AbsoluteSize.X - width - 8
-	local x = _clamp(origin.X + size.X - width, left, _max(left, right))
+	local anchor_x = (origin.X - container_pos.X) / scale
+	local anchor_y = (origin.Y - container_pos.Y) / scale
+	local anchor_w = size.X / scale
+	local anchor_h = size.Y / scale
+	local x = _clamp(anchor_x + anchor_w - width, SIDEBAR_WIDTH + 8, WINDOW_WIDTH - width - 8)
+	local y = anchor_y + anchor_h + 2
 
 	local backdrop = create_new('TextButton', {
 		BackgroundColor3 = Color3.fromRGB(0, 0, 0),
@@ -3378,14 +3382,12 @@ open_settings_panel = function(runtime, anchor, entries, title)
 		AutoButtonColor = false,
 		BorderSizePixel = 0,
 		ZIndex = 498,
-		Parent = runtime._ui,
+		Parent = container,
 	})
 
 	_create_tween(tween_service, backdrop, _new_tween_info(0.18), {
 		BackgroundTransparency = 0.45,
 	}):Play()
-
-	local y = origin.Y + size.Y + 6 - inset.Y
 
 	local shadow = create_new('Frame', {
 		Position = _new_udim2(0, x + 2, 0, y + 4),
@@ -3395,18 +3397,18 @@ open_settings_panel = function(runtime, anchor, entries, title)
 		BackgroundTransparency = 0.55,
 		BorderSizePixel = 0,
 		ZIndex = 499,
-		Parent = runtime._ui,
+		Parent = container,
 	})
 
 	create_round(shadow, 8)
 
 	local panel = create_new('Frame', {
-		Position = _new_udim2(0, x, 0, y + 8),
+		Position = _new_udim2(0, x, 0, y + 6),
 		Size = _new_udim2(0, width, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		BorderSizePixel = 0,
 		ZIndex = 500,
-		Parent = runtime._ui,
+		Parent = container,
 	})
 
 	_create_tween(tween_service, panel, _new_tween_info(0.2, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
@@ -3431,18 +3433,36 @@ open_settings_panel = function(runtime, anchor, entries, title)
 		Parent = panel,
 	})
 
+	local closing = false
+
 	local function close()
-		if panel.Parent then
-			panel:Destroy()
+		if closing then
+			return
 		end
 
-		if shadow.Parent then
-			shadow:Destroy()
-		end
+		closing = true
 
-		if backdrop.Parent then
-			backdrop:Destroy()
-		end
+		_create_tween(tween_service, panel, _new_tween_info(0.16, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
+			Position = _new_udim2(0, x, 0, y + 6),
+		}):Play()
+
+		_create_tween(tween_service, backdrop, _new_tween_info(0.16), {
+			BackgroundTransparency = 1,
+		}):Play()
+
+		_delay(0.18, function()
+			if panel.Parent then
+				panel:Destroy()
+			end
+
+			if shadow.Parent then
+				shadow:Destroy()
+			end
+
+			if backdrop.Parent then
+				backdrop:Destroy()
+			end
+		end)
 
 		runtime._settings_panel = nil
 		runtime._settings_shadow = nil
