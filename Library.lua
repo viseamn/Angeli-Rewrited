@@ -1750,8 +1750,8 @@ function library:notify(message)
 	local width = runtime._is_mobile and 300 or 340
 	local height = 48
 	local duration = 2.6
-	local from_left = string.find(_tostring(runtime._notify_position), 'left', 1, true) ~= nil
-	local offset = from_left and -width or width
+	local from_top = string.find(_tostring(runtime._notify_position), 'top', 1, true) ~= nil
+	local offset = from_top and -width or width
 
 	runtime._notification_order += 1
 
@@ -1827,8 +1827,8 @@ function library:notify(message)
 
 	local bar = create_new('Frame', {
 		AnchorPoint = _new_vector2(0, 1),
-		Position = _new_udim2(0, 0, 1, 0),
-		Size = _new_udim2(1, 0, 0, 2),
+		Position = _new_udim2(0, 6, 1, 0),
+		Size = _new_udim2(1, -12, 0, 2),
 		BorderSizePixel = 0,
 		BackgroundTransparency = 1,
 		ZIndex = 203,
