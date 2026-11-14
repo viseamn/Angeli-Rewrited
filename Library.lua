@@ -760,7 +760,7 @@ function library:_move_pin()
 	local gap = (button.AbsolutePosition.X - self._sidebar.AbsolutePosition.X) / scale
 	local target = _new_udim2(
 		0,
-		gap / 2 - 1,
+		gap - 1,
 		0,
 		(button.AbsolutePosition.Y - self._sidebar.AbsolutePosition.Y + button.AbsoluteSize.Y / 2) / scale - 8
 	)
@@ -1874,102 +1874,30 @@ local function create_switch(parent, order, values, runtime)
 		end
 	end
 
-	local function build_bell(button)
-		local parts = {}
-
-		local stem = create_new('Frame', {
-			Position = _new_udim2(0, 6, 0, 1),
-			Size = _new_udim2(0, 4, 0, 3),
-			BorderSizePixel = 0,
-			ZIndex = 6,
-			Parent = button,
-		})
-
-		create_round(stem, 1)
-		_insert(parts, stem)
-
-		local dome = create_new('Frame', {
-			Position = _new_udim2(0, 3, 0, 4),
-			Size = _new_udim2(0, 10, 0, 8),
-			BorderSizePixel = 0,
-			ZIndex = 6,
-			Parent = button,
-		})
-
-		create_round(dome, 5)
-		_insert(parts, dome)
-
-		local clapper = create_new('Frame', {
-			Position = _new_udim2(0, 6, 0, 12),
-			Size = _new_udim2(0, 4, 0, 4),
-			BorderSizePixel = 0,
-			ZIndex = 6,
-			Parent = button,
-		})
-
-		create_pill(clapper)
-		_insert(parts, clapper)
-
-		return function(role)
-			for _, part in parts do
-				theme.paint(part, 'BackgroundColor3', role)
-			end
-		end
-	end
-
-	local function build_gear(button)
-		local parts = {}
-
-		local ring = create_new('Frame', {
-			Position = _new_udim2(0, 2, 0, 2),
-			Size = _new_udim2(0, 12, 0, 12),
-			BorderSizePixel = 0,
-			ZIndex = 6,
-			Parent = button,
-		})
-
-		create_pill(ring)
-		_insert(parts, ring)
-
-		for _, spot in { { 7, 0 }, { 7, 14 }, { 0, 7 }, { 14, 7 } } do
-			local nub = create_new('Frame', {
-				Position = _new_udim2(0, spot[1], 0, spot[2]),
-				Size = _new_udim2(0, 2, 0, 2),
-				BorderSizePixel = 0,
-				ZIndex = 6,
-				Parent = button,
-			})
-
-			_insert(parts, nub)
-		end
-
-		local hole = create_new('Frame', {
-			Position = _new_udim2(0, 5, 0, 5),
-			Size = _new_udim2(0, 6, 0, 6),
-			BorderSizePixel = 0,
-			ZIndex = 7,
-			Parent = button,
-		})
-
-		create_pill(hole)
-		theme.paint(hole, 'BackgroundColor3', 'surface')
-
-		return function(role)
-			for _, part in parts do
-				theme.paint(part, 'BackgroundColor3', role)
-			end
-		end
-	end
-
 	local bell = icon_button(icon_right)
 	local gear = icon_button(icon_right - 18)
 
-	local paint_bell = build_icon(bell, 'bell', 14) or build_bell(bell)
-	local paint_gear = build_icon(gear, 'settings', 14) or build_gear(gear)
+	local paint_bell = build_icon(bell, 'bell', 14)
+	local paint_gear = build_icon(gear, 'settings', 14)
+
+	if not paint_bell then
+		bell:Destroy()
+		bell = nil
+	end
+
+	if not paint_gear then
+		gear:Destroy()
+		gear = nil
+	end
 
 	local function paint_icons(hovered)
-		paint_bell(notify_on and 'accent' or 'text_dim')
-		paint_gear(hovered and 'text' or 'text_dim')
+		if paint_bell then
+			paint_bell(notify_on and 'accent' or 'text_dim')
+		end
+
+		if paint_gear then
+			paint_gear(hovered and 'text' or 'text_dim')
+		end
 	end
 
 	paint_icons(false)
@@ -2046,69 +1974,9 @@ local function create_switch(parent, order, values, runtime)
 		set_value(not state, true)
 	end)
 
-	bell.MouseButton1Click:Connect(function()
-		notify_on = not notify_on
-
-		if notify_flag then
-			runtime._flags[notify_flag] = notify_on
-			library._save(runtime)
-		end
-
-		paint_icons(false)
-	end)
-
-	gear.MouseEnter:Connect(function()
-		paint_icons(true)
-	end)
-
-	gear.MouseLeave:Connect(function()
-		paint_icons(false)
-	end)
-
-	gear.MouseButton1Click:Connect(function()
-		if runtime._option_menu then
-			runtime._option_menu:Destroy()
-			runtime._option_menu = nil
-		end
-
-		local mouse = user_input_service:GetMouseLocation()
-
-		local menu = create_new('Frame', {
-			Position = _new_udim2(0, mouse.X, 0, mouse.Y),
-			Size = _new_udim2(0, 132, 0, 56),
-			BorderSizePixel = 0,
-			ZIndex = 500,
-			Parent = runtime._ui,
-		})
-
-		theme.paint(menu, 'BackgroundColor3', 'surface')
-		create_round(menu, 6)
-		create_outline(menu)
-		create_padding(menu, 4, 4, 4, 4)
-		create_list(menu, 0)
-
-		runtime._option_menu = menu
-
-		local notify_entry = create_new('TextButton', {
-			BackgroundTransparency = 1,
-			LayoutOrder = 1,
-			Size = _new_udim2(1, 0, 0, 24),
-			FontFace = FONT,
-			Text = `Notify: {notify_on and 'On' or 'Off'}`,
-			TextSize = runtime._label_size,
-			TextXAlignment = Enum.TextXAlignment.Left,
-			AutoButtonColor = false,
-			BorderSizePixel = 0,
-			ZIndex = 501,
-			Parent = menu,
-		})
-
-		theme.paint(notify_entry, 'TextColor3', 'text')
-		create_padding(notify_entry, 0, 0, 8, 8)
-
-		notify_entry.MouseButton1Click:Connect(function()
+	if bell then
+		bell.MouseButton1Click:Connect(function()
 			notify_on = not notify_on
-			notify_entry.Text = `Notify: {notify_on and 'On' or 'Off'}`
 
 			if notify_flag then
 				runtime._flags[notify_flag] = notify_on
@@ -2117,32 +1985,94 @@ local function create_switch(parent, order, values, runtime)
 
 			paint_icons(false)
 		end)
+	end
 
-		local reset_entry = create_new('TextButton', {
-			BackgroundTransparency = 1,
-			LayoutOrder = 2,
-			Size = _new_udim2(1, 0, 0, 24),
-			FontFace = FONT,
-			Text = 'Reset',
-			TextSize = runtime._label_size,
-			TextXAlignment = Enum.TextXAlignment.Left,
-			AutoButtonColor = false,
-			BorderSizePixel = 0,
-			ZIndex = 501,
-			Parent = menu,
-		})
-
-		theme.paint(reset_entry, 'TextColor3', 'text_dim')
-		create_padding(reset_entry, 0, 0, 8, 8)
-
-		reset_entry.MouseButton1Click:Connect(function()
-			set_value(values.default == true, true)
-			menu:Destroy()
-			runtime._option_menu = nil
+	if gear then
+		gear.MouseEnter:Connect(function()
+			paint_icons(true)
 		end)
-	end)
 
+		gear.MouseLeave:Connect(function()
+			paint_icons(false)
+		end)
 
+		gear.MouseButton1Click:Connect(function()
+			if runtime._option_menu then
+				runtime._option_menu:Destroy()
+				runtime._option_menu = nil
+			end
+
+			local mouse = user_input_service:GetMouseLocation()
+
+			local menu = create_new('Frame', {
+				Position = _new_udim2(0, mouse.X, 0, mouse.Y),
+				Size = _new_udim2(0, 132, 0, 56),
+				BorderSizePixel = 0,
+				ZIndex = 500,
+				Parent = runtime._ui,
+			})
+
+			theme.paint(menu, 'BackgroundColor3', 'surface')
+			create_round(menu, 6)
+			create_outline(menu)
+			create_padding(menu, 4, 4, 4, 4)
+			create_list(menu, 0)
+
+			runtime._option_menu = menu
+
+			local notify_entry = create_new('TextButton', {
+				BackgroundTransparency = 1,
+				LayoutOrder = 1,
+				Size = _new_udim2(1, 0, 0, 24),
+				FontFace = FONT,
+				Text = `Notify: {notify_on and 'On' or 'Off'}`,
+				TextSize = runtime._label_size,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				AutoButtonColor = false,
+				BorderSizePixel = 0,
+				ZIndex = 501,
+				Parent = menu,
+			})
+
+			theme.paint(notify_entry, 'TextColor3', 'text')
+			create_padding(notify_entry, 0, 0, 8, 8)
+
+			notify_entry.MouseButton1Click:Connect(function()
+				notify_on = not notify_on
+				notify_entry.Text = `Notify: {notify_on and 'On' or 'Off'}`
+
+				if notify_flag then
+					runtime._flags[notify_flag] = notify_on
+					library._save(runtime)
+				end
+
+				paint_icons(false)
+			end)
+
+			local reset_entry = create_new('TextButton', {
+				BackgroundTransparency = 1,
+				LayoutOrder = 2,
+				Size = _new_udim2(1, 0, 0, 24),
+				FontFace = FONT,
+				Text = 'Reset',
+				TextSize = runtime._label_size,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				AutoButtonColor = false,
+				BorderSizePixel = 0,
+				ZIndex = 501,
+				Parent = menu,
+			})
+
+			theme.paint(reset_entry, 'TextColor3', 'text_dim')
+			create_padding(reset_entry, 0, 0, 8, 8)
+
+			reset_entry.MouseButton1Click:Connect(function()
+				set_value(values.default == true, true)
+				menu:Destroy()
+				runtime._option_menu = nil
+			end)
+		end)
+	end
 	if chip then
 		chip.MouseButton1Click:Connect(function()
 			picking = true
@@ -3473,6 +3403,169 @@ function group_methods:create_keybind(flag, values)
 	values = values or {}
 	values.flag = flag
 	return create_keybind(self._frame, self:_next_order(), values, self._runtime)
+end
+
+function library:build_settings(tab)
+	if not tab or _type(tab.create_group) ~= 'function' then
+		return false
+	end
+
+	if save_manager then
+		local profiles = tab:create_group('Profiles', 'left')
+		local dropdown
+
+		local function refresh(selected)
+			local names = library:profiles()
+
+			if #names == 0 then
+				names = { 'default' }
+			end
+
+			if dropdown then
+				dropdown:set_options(names, selected or save_manager._active)
+			end
+		end
+
+		dropdown = profiles:create_dropdown('__profile', {
+			title = 'Profile',
+			options = library:profiles(),
+			default = save_manager._active,
+			hide_icon = true,
+			empty_text = 'none',
+			callback = function(name)
+				if library:load_profile(name) then
+					library:notify(`Loaded {name}`)
+				end
+			end,
+		})
+
+		local name_box = profiles:create_textbox({
+			title = 'Name',
+			placeholder = 'default',
+			height = 24,
+			compact = true,
+		})
+
+		local function target()
+			local name = trim(string.gsub(_tostring(name_box:get() or ''), '[^%w_%- ]', ''))
+
+			if name == '' then
+				name = save_manager._active or 'default'
+			end
+
+			return name
+		end
+
+		profiles:create_button({
+			title = 'Save',
+			callback = function()
+				local name = target()
+
+				if library:save(name) then
+					refresh(name)
+					library:notify(`Saved {name}`)
+				end
+			end,
+		})
+
+		profiles:create_button({
+			title = 'Load',
+			callback = function()
+				local name = dropdown:get_value()
+
+				if name and library:load_profile(name) then
+					library:notify(`Loaded {name}`)
+				end
+			end,
+		})
+
+		profiles:create_button({
+			title = 'Delete',
+			callback = function()
+				local name = dropdown:get_value()
+
+				if not name then
+					return
+				end
+
+				library:confirm(`Delete "{name}"?`, function()
+					if library:delete_profile(name) then
+						refresh()
+						library:notify(`Deleted {name}`)
+					end
+				end)
+			end,
+		})
+
+		refresh(save_manager._active)
+
+		local storage = tab:create_group('Storage', 'right')
+
+		storage:create_toggle({
+			title = 'Autosave',
+			default = save_manager._autosave,
+			callback = function(state)
+				save_manager._autosave = state
+				library:_persist_state()
+			end,
+		})
+
+		storage:create_button({
+			title = 'Refresh',
+			callback = function()
+				refresh()
+			end,
+		})
+
+		storage:create_button({
+			title = 'Overwrite',
+			callback = function()
+				local name = save_manager._active or 'default'
+
+				if library:save(name) then
+					library:notify(`Saved {name}`)
+				end
+			end,
+		})
+	end
+
+	if theme then
+		local appearance = tab:create_group('Appearance', 'right')
+
+		appearance:create_dropdown('__theme', {
+			title = 'Theme',
+			options = library:themes(),
+			default = theme.current(),
+			hide_icon = true,
+			callback = function(name)
+				if library:set_theme(name, true) then
+					library:notify(`Theme: {name}`)
+				end
+			end,
+		})
+
+		appearance:create_dropdown('__notify', {
+			title = 'Notify corner',
+			options = { 'bottom-right', 'bottom-left', 'top-right' },
+			default = library._current and library._current._notify_position or 'bottom-right',
+			hide_icon = true,
+			callback = function(position)
+				if library:set_notify_position(position) then
+					library:notify(`Notify: {position}`)
+				end
+			end,
+		})
+
+		appearance:create_button({
+			title = 'Reset theme',
+			callback = function()
+				library:set_theme(theme.current(), false)
+				library:notify('Theme reloaded')
+			end,
+		})
+	end
+
+	return true
 end
 
 library.group_methods = group_methods
