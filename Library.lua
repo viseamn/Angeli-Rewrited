@@ -1753,6 +1753,8 @@ local function resolve_key(value)
 	return nil
 end
 
+local open_settings_panel
+
 local function create_switch(parent, order, values, runtime)
 	local state = values.default == true
 	local key_flag = values.keybind_flag or (values.flag and `{values.flag}_key`)
@@ -3335,7 +3337,7 @@ local function create_colorpicker(parent, order, values, runtime)
 	}
 end
 
-local function open_settings_panel(runtime, anchor, entries, title)
+open_settings_panel = function(runtime, anchor, entries, title)
 	if runtime._settings_panel then
 		runtime._settings_panel:Destroy()
 		runtime._settings_panel = nil
