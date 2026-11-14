@@ -1749,39 +1749,35 @@ function library:notify(message)
 
 	local width = runtime._is_mobile and 300 or 340
 	local height = 48
+	local duration = 2.6
+	local from_left = string.find(_tostring(runtime._notify_position), 'left', 1, true) ~= nil
+	local offset = from_left and -width or width
 
 	runtime._notification_order += 1
 
-	local card = create_new('Frame', {
+	local slot = create_new('Frame', {
 		BackgroundTransparency = 1,
 		LayoutOrder = runtime._notification_order,
 		Size = _new_udim2(0, width, 0, 0),
 		BorderSizePixel = 0,
-		ClipsDescendants = true,
 		ZIndex = 200,
 		Parent = runtime._notification_holder,
 	})
 
+	local card = create_new('TextButton', {
+		BackgroundTransparency = 1,
+		Position = _new_udim2(0, offset, 0, 0),
+		Size = _new_udim2(1, 0, 1, 0),
+		Text = '',
+		AutoButtonColor = false,
+		BorderSizePixel = 0,
+		ClipsDescendants = true,
+		ZIndex = 200,
+		Parent = slot,
+	})
+
 	theme.paint(card, 'BackgroundColor3', 'surface')
 	create_round(card, 6)
-
-	local active = runtime._notifications
-
-	_insert(active, card)
-
-	for index = #active, 1, -1 do
-		if not active[index].Parent then
-			table.remove(active, index)
-		end
-	end
-
-	while #active > 4 do
-		local oldest = table.remove(active, 1)
-
-		if oldest and oldest.Parent then
-			oldest:Destroy()
-		end
-	end
 
 	local icon = create_new('Frame', {
 		AnchorPoint = _new_vector2(0, 0.5),
@@ -1829,9 +1825,43 @@ function library:notify(message)
 		Parent = card,
 	})
 
-	_create_tween(tween_service, card, _new_tween_info(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
-		BackgroundTransparency = 0,
+	local bar = create_new('Frame', {
+		AnchorPoint = _new_vector2(0, 1),
+		Position = _new_udim2(0, 0, 1, 0),
+		Size = _new_udim2(1, 0, 0, 2),
+		BorderSizePixel = 0,
+		BackgroundTransparency = 1,
+		ZIndex = 203,
+		Parent = card,
+	})
+
+	theme.paint(bar, 'BackgroundColor3', 'accent')
+
+	local active = runtime._notifications
+
+	_insert(active, slot)
+
+	for index = #active, 1, -1 do
+		if not active[index].Parent then
+			table.remove(active, index)
+		end
+	end
+
+	while #active > 4 do
+		local oldest = table.remove(active, 1)
+
+		if oldest and oldest.Parent then
+			oldest:Destroy()
+		end
+	end
+
+	_create_tween(tween_service, slot, _new_tween_info(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
 		Size = _new_udim2(0, width, 0, height),
+	}):Play()
+
+	_create_tween(tween_service, card, _new_tween_info(0.32, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+		Position = _new_udim2(0, 0, 0, 0),
+		BackgroundTransparency = 0,
 	}):Play()
 
 	_create_tween(tween_service, label, _new_tween_info(0.2, Enum.EasingStyle.Quint), {
@@ -1844,26 +1874,44 @@ function library:notify(message)
 
 	_create_tween(tween_service, icon_stroke, _new_tween_info(0.2), { Transparency = 0 }):Play()
 
-	_delay(2.6, function()
-		if not card.Parent then
+	_create_tween(tween_service, bar, _new_tween_info(duration, Enum.EasingStyle.Linear), {
+		Size = _new_udim2(0, 0, 0, 2),
+		BackgroundTransparency = 0,
+	}):Play()
+
+	local closed = false
+
+	local function dismiss()
+		if closed then
 			return
 		end
 
-		_create_tween(tween_service, card, _new_tween_info(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
-			BackgroundTransparency = 1,
+		closed = true
+
+		_create_tween(tween_service, slot, _new_tween_info(0.24, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
 			Size = _new_udim2(0, width, 0, 0),
+		}):Play()
+
+		_create_tween(tween_service, card, _new_tween_info(0.26, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
+			Position = _new_udim2(0, -offset, 0, 0),
+			BackgroundTransparency = 1,
 		}):Play()
 
 		_create_tween(tween_service, label, _new_tween_info(0.2), { TextTransparency = 1 }):Play()
 		_create_tween(tween_service, icon_label, _new_tween_info(0.2), { TextTransparency = 1 }):Play()
 		_create_tween(tween_service, icon_stroke, _new_tween_info(0.2), { Transparency = 1 }):Play()
-	end)
+		_create_tween(tween_service, bar, _new_tween_info(0.2), { BackgroundTransparency = 1 }):Play()
 
-	_delay(2.9, function()
-		if card.Parent then
-			card:Destroy()
-		end
-	end)
+		_delay(0.3, function()
+			if slot.Parent then
+				slot:Destroy()
+			end
+		end)
+	end
+
+	card.MouseButton1Click:Connect(dismiss)
+
+	_delay(duration, dismiss)
 end
 
 function library:_init_keybinds()
