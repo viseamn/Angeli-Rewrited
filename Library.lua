@@ -26,6 +26,7 @@ local text_service = _cloneref(game:GetService('TextService'))
 local http_service = _cloneref(game:GetService('HttpService'))
 local core_gui = _cloneref(game:GetService('CoreGui'))
 local debris = _cloneref(game:GetService('Debris'))
+local gui_service = _cloneref(game:GetService('GuiService'))
 
 local _new_instance = Instance.new
 local _new_tween_info = TweenInfo.new
@@ -664,6 +665,10 @@ function library:_init()
 
 	local drag_connection = nil
 	container.InputBegan:Connect(function(input)
+		if not self._ui_open then
+			return
+		end
+
 		if
 			input.UserInputType ~= Enum.UserInputType.MouseButton1
 			and input.UserInputType ~= Enum.UserInputType.Touch
@@ -827,6 +832,7 @@ function library:set_open(state)
 
 	if state then
 		container.Visible = true
+		container.Active = true
 		_create_tween(tween_service, container, _new_tween_info(0.4, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
 			Size = _udim2_from_offset(WINDOW_WIDTH, WINDOW_HEIGHT),
 		}):Play()
@@ -837,6 +843,9 @@ function library:set_open(state)
 	end
 
 	self:close_all_dropdowns()
+
+	self._dragging = false
+	container.Active = false
 
 	_create_tween(tween_service, container, _new_tween_info(0.32, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
 		Size = _new_udim2(0, 0, 0, 0),
@@ -2002,11 +2011,33 @@ local function create_switch(parent, order, values, runtime)
 				runtime._option_menu = nil
 			end
 
-			local mouse = user_input_service:GetMouseLocation()
+			if runtime._option_backdrop then
+				runtime._option_backdrop:Destroy()
+				runtime._option_backdrop = nil
+			end
+
+			local width = 132
+			local height = 56
+			local origin = gear.AbsolutePosition
+			local size = gear.AbsoluteSize
+			local inset = gui_service:GetGuiInset()
+			local x = _max(8, origin.X + size.X - width)
+
+			local backdrop = create_new('TextButton', {
+				BackgroundTransparency = 1,
+				Size = _new_udim2(1, 0, 1, 0),
+				Text = '',
+				AutoButtonColor = false,
+				BorderSizePixel = 0,
+				ZIndex = 499,
+				Parent = runtime._ui,
+			})
+
+			runtime._option_backdrop = backdrop
 
 			local menu = create_new('Frame', {
-				Position = _new_udim2(0, mouse.X, 0, mouse.Y),
-				Size = _new_udim2(0, 132, 0, 56),
+				Position = _new_udim2(0, x, 0, origin.Y + size.Y + 4 - inset.Y),
+				Size = _new_udim2(0, width, 0, height),
 				BorderSizePixel = 0,
 				ZIndex = 500,
 				Parent = runtime._ui,
@@ -2066,11 +2097,19 @@ local function create_switch(parent, order, values, runtime)
 			theme.paint(reset_entry, 'TextColor3', 'text_dim')
 			create_padding(reset_entry, 0, 0, 8, 8)
 
+			local function close_menu()
+				menu:Destroy()
+				backdrop:Destroy()
+				runtime._option_menu = nil
+				runtime._option_backdrop = nil
+			end
+
 			reset_entry.MouseButton1Click:Connect(function()
 				set_value(values.default == true, true)
-				menu:Destroy()
-				runtime._option_menu = nil
+				close_menu()
 			end)
+
+			backdrop.MouseButton1Click:Connect(close_menu)
 		end)
 	end
 	if chip then
@@ -2086,9 +2125,10 @@ local function create_switch(parent, order, values, runtime)
 			end
 
 			local mouse = user_input_service:GetMouseLocation()
+			local inset = gui_service:GetGuiInset()
 
 			local menu = create_new('Frame', {
-				Position = _new_udim2(0, mouse.X, 0, mouse.Y),
+				Position = _new_udim2(0, mouse.X, 0, mouse.Y - inset.Y),
 				Size = _new_udim2(0, 104, 0, 3 * 24 + 8),
 				BorderSizePixel = 0,
 				ZIndex = 500,
