@@ -1773,8 +1773,12 @@ local function create_switch(parent, order, values, runtime)
 		Parent = parent,
 	})
 
+	local icon_count = (values.notify and 1 or 0) + (values.settings and 1 or 0)
+	local icon_right = key and -60 or -36
+	local label_edge = icon_count > 0 and (icon_right - 18 * icon_count) or (key and -54 or -36)
+
 	local label = create_label({
-		Size = _new_udim2(1, key and -98 or -76, 1, 0),
+		Size = _new_udim2(1, label_edge - 6, 1, 0),
 		Text = values.title or 'Toggle',
 		TextSize = runtime._label_size,
 		TextXAlignment = Enum.TextXAlignment.Left,
@@ -1840,9 +1844,6 @@ local function create_switch(parent, order, values, runtime)
 
 	local notify_flag = values.flag and `{values.flag}_notify`
 	local notify_on = notify_flag ~= nil and runtime._flags[notify_flag] == true
-	local icon_right = key and -58 or -36
-	local bell_parts = {}
-	local gear_parts = {}
 
 	local function icon_button(offset)
 		return create_new('TextButton', {
@@ -1883,20 +1884,29 @@ local function create_switch(parent, order, values, runtime)
 		end
 	end
 
-	local bell = icon_button(icon_right)
-	local gear = icon_button(icon_right - 18)
+	local bell = nil
+	local gear = nil
+	local paint_bell = nil
+	local paint_gear = nil
 
-	local paint_bell = build_icon(bell, 'bell', 14)
-	local paint_gear = build_icon(gear, 'settings', 14)
+	if values.notify then
+		bell = icon_button(icon_right)
+		paint_bell = build_icon(bell, 'bell', 14)
 
-	if not paint_bell then
-		bell:Destroy()
-		bell = nil
+		if not paint_bell then
+			bell:Destroy()
+			bell = nil
+		end
 	end
 
-	if not paint_gear then
-		gear:Destroy()
-		gear = nil
+	if values.settings then
+		gear = icon_button(icon_right - (values.notify and 18 or 0))
+		paint_gear = build_icon(gear, 'settings', 14)
+
+		if not paint_gear then
+			gear:Destroy()
+			gear = nil
+		end
 	end
 
 	local function paint_icons(hovered)
