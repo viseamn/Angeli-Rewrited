@@ -3361,7 +3361,7 @@ open_settings_panel = function(runtime, anchor, entries, title)
 		runtime._settings_backdrop = nil
 	end
 
-	local width = 200
+	local width = 184
 	local origin = anchor.AbsolutePosition
 	local size = anchor.AbsoluteSize
 	local inset = gui_service:GetGuiInset()
@@ -3371,6 +3371,7 @@ open_settings_panel = function(runtime, anchor, entries, title)
 	local x = _clamp(origin.X + size.X - width, left, _max(left, right))
 
 	local backdrop = create_new('TextButton', {
+		BackgroundColor3 = Color3.fromRGB(0, 0, 0),
 		BackgroundTransparency = 1,
 		Size = _new_udim2(1, 0, 1, 0),
 		Text = '',
@@ -3379,6 +3380,10 @@ open_settings_panel = function(runtime, anchor, entries, title)
 		ZIndex = 498,
 		Parent = runtime._ui,
 	})
+
+	_create_tween(tween_service, backdrop, _new_tween_info(0.18), {
+		BackgroundTransparency = 0.45,
+	}):Play()
 
 	local y = origin.Y + size.Y + 6 - inset.Y
 
@@ -3396,7 +3401,7 @@ open_settings_panel = function(runtime, anchor, entries, title)
 	create_round(shadow, 8)
 
 	local panel = create_new('Frame', {
-		Position = _new_udim2(0, x, 0, y),
+		Position = _new_udim2(0, x, 0, y + 8),
 		Size = _new_udim2(0, width, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		BorderSizePixel = 0,
@@ -3404,15 +3409,19 @@ open_settings_panel = function(runtime, anchor, entries, title)
 		Parent = runtime._ui,
 	})
 
+	_create_tween(tween_service, panel, _new_tween_info(0.2, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+		Position = _new_udim2(0, x, 0, y),
+	}):Play()
+
 	theme.paint(panel, 'BackgroundColor3', 'surface')
 	create_round(panel, 8)
 	create_outline(panel)
 	create_padding(panel, 8, 8, 10, 10)
-	create_list(panel, 8)
+	create_list(panel, 6)
 
 	create_label({
 		LayoutOrder = 0,
-		Size = _new_udim2(1, 0, 0, 14),
+		Size = _new_udim2(1, 0, 0, 12),
 		Text = string.upper(_tostring(title or 'Settings')),
 		TextRole = 'text_dim',
 		TextSize = runtime._small_size,
