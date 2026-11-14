@@ -504,8 +504,8 @@ function library:_init()
 	self._highlight = highlight
 
 	local pin = create_new('Frame', {
-		Position = _new_udim2(0, 7, 0, 0),
-		Size = _new_udim2(0, 2, 0, 12),
+		Position = _new_udim2(0, 4, 0, 0),
+		Size = _new_udim2(0, 2, 0, 16),
 		BorderSizePixel = 0,
 		ZIndex = 50,
 		Parent = sidebar,
@@ -716,9 +716,9 @@ function library:_move_pin()
 	local button = self._active_tab._button
 	local target = _new_udim2(
 		0,
-		7,
+		4,
 		0,
-		(button.AbsolutePosition.Y - self._sidebar.AbsolutePosition.Y + button.AbsoluteSize.Y / 2) / self._ui_scale - 6
+		(button.AbsolutePosition.Y - self._sidebar.AbsolutePosition.Y + button.AbsoluteSize.Y / 2) / self._ui_scale - 8
 	)
 
 	_create_tween(
@@ -1235,53 +1235,6 @@ function library:confirm(message, callback)
 	return true
 end
 
-function library:show_tooltip(text)
-	local runtime = resolve_runtime(self)
-
-	if not runtime or not runtime._ui or not text or text == '' then
-		return
-	end
-
-	library.hide_tooltip(runtime)
-
-	local mouse = user_input_service:GetMouseLocation()
-
-	local tip = create_new('Frame', {
-		Position = _new_udim2(0, mouse.X + 14, 0, mouse.Y + 18),
-		AutomaticSize = Enum.AutomaticSize.X,
-		Size = _new_udim2(0, 0, 0, 22),
-		BorderSizePixel = 0,
-		ZIndex = 500,
-		Parent = runtime._ui,
-	})
-
-	theme.paint(tip, 'BackgroundColor3', 'surface_alt')
-	create_round(tip, 4)
-	create_outline(tip)
-	create_padding(tip, 0, 0, 8, 8)
-
-	create_label({
-		Size = _new_udim2(1, 0, 1, 0),
-		Text = text,
-		TextRole = 'text',
-		TextSize = runtime._small_size + 1,
-		TextXAlignment = Enum.TextXAlignment.Center,
-		ZIndex = 501,
-		Parent = tip,
-	})
-
-	runtime._tooltip = tip
-end
-
-function library:hide_tooltip()
-	local runtime = resolve_runtime(self)
-
-	if runtime and runtime._tooltip then
-		runtime._tooltip:Destroy()
-		runtime._tooltip = nil
-	end
-end
-
 function library:pulse_saved()
 	if not self._saved_dot then
 		return
@@ -1313,7 +1266,6 @@ function library:destroy()
 
 	self._ui = nil
 	self._notify_gui = nil
-	self._tooltip = nil
 
 	if library._current == self then
 		library._current = nil
@@ -1459,8 +1411,8 @@ function library:notify(message)
 
 	local bar = create_new('Frame', {
 		AnchorPoint = _new_vector2(0, 1),
-		Position = _new_udim2(0, 6, 1, 0),
-		Size = _new_udim2(1, -12, 0, 3),
+		Position = _new_udim2(0, 0, 1, 0),
+		Size = _new_udim2(1, 0, 0, 12),
 		BorderSizePixel = 0,
 		BackgroundTransparency = 1,
 		ZIndex = 203,
@@ -1468,7 +1420,17 @@ function library:notify(message)
 	})
 
 	theme.paint(bar, 'BackgroundColor3', 'accent')
-	create_pill(bar)
+	create_round(bar, 6)
+
+	local bar_cover = create_new('Frame', {
+		Position = _new_udim2(0, 0, 1, -12),
+		Size = _new_udim2(1, 0, 0, 9),
+		BorderSizePixel = 0,
+		ZIndex = 204,
+		Parent = card,
+	})
+
+	theme.paint(bar_cover, 'BackgroundColor3', 'surface')
 
 	local active = runtime._notifications
 
@@ -1508,7 +1470,7 @@ function library:notify(message)
 	_create_tween(tween_service, icon_stroke, _new_tween_info(0.2), { Transparency = 0 }):Play()
 
 	_create_tween(tween_service, bar, _new_tween_info(duration, Enum.EasingStyle.Linear), {
-		Size = _new_udim2(0, 0, 0, 3),
+		Size = _new_udim2(0, 0, 0, 12),
 		BackgroundTransparency = 0,
 	}):Play()
 
@@ -1534,6 +1496,7 @@ function library:notify(message)
 		_create_tween(tween_service, icon_label, _new_tween_info(0.2), { TextTransparency = 1 }):Play()
 		_create_tween(tween_service, icon_stroke, _new_tween_info(0.2), { Transparency = 1 }):Play()
 		_create_tween(tween_service, bar, _new_tween_info(0.2), { BackgroundTransparency = 1 }):Play()
+		_create_tween(tween_service, bar_cover, _new_tween_info(0.2), { BackgroundTransparency = 1 }):Play()
 
 		_delay(0.3, function()
 			if slot.Parent then
@@ -1737,20 +1700,6 @@ local function resolve_key(value)
 	return nil
 end
 
-local function attach_tooltip(runtime, instance, text)
-	if _type(text) ~= 'string' or text == '' then
-		return
-	end
-
-	instance.MouseEnter:Connect(function()
-		library.show_tooltip(runtime, text)
-	end)
-
-	instance.MouseLeave:Connect(function()
-		library.hide_tooltip(runtime)
-	end)
-end
-
 local function create_switch(parent, order, values, runtime)
 	local state = values.default == true
 	local key_flag = values.keybind_flag or (values.flag and `{values.flag}_key`)
@@ -1772,7 +1721,7 @@ local function create_switch(parent, order, values, runtime)
 	})
 
 	local label = create_label({
-		Size = _new_udim2(1, key and -68 or -40, 1, 0),
+		Size = _new_udim2(1, key and -98 or -76, 1, 0),
 		Text = values.title or 'Toggle',
 		TextSize = runtime._label_size,
 		TextXAlignment = Enum.TextXAlignment.Left,
@@ -1836,6 +1785,106 @@ local function create_switch(parent, order, values, runtime)
 		})
 	end
 
+	local notify_flag = values.flag and `{values.flag}_notify`
+	local notify_on = notify_flag ~= nil and runtime._flags[notify_flag] == true
+	local icon_right = key and -58 or -36
+	local bell_parts = {}
+	local gear_parts = {}
+
+	local function icon_button(offset)
+		return create_new('TextButton', {
+			AnchorPoint = _new_vector2(1, 0.5),
+			Position = _new_udim2(1, offset, 0.5, 0),
+			Size = _new_udim2(0, 16, 0, 16),
+			BackgroundTransparency = 1,
+			Text = '',
+			AutoButtonColor = false,
+			BorderSizePixel = 0,
+			ZIndex = 6,
+			Parent = row,
+		})
+	end
+
+	local bell = icon_button(icon_right)
+
+	_insert(bell_parts, create_new('Frame', {
+		Position = _new_udim2(0, 6, 0, 1),
+		Size = _new_udim2(0, 4, 0, 3),
+		BorderSizePixel = 0,
+		ZIndex = 6,
+		Parent = bell,
+	}))
+
+	create_round(bell_parts[1], 1)
+
+	_insert(bell_parts, create_new('Frame', {
+		Position = _new_udim2(0, 3, 0, 4),
+		Size = _new_udim2(0, 10, 0, 8),
+		BorderSizePixel = 0,
+		ZIndex = 6,
+		Parent = bell,
+	}))
+
+	create_round(bell_parts[2], 5)
+
+	_insert(bell_parts, create_new('Frame', {
+		Position = _new_udim2(0, 6, 0, 12),
+		Size = _new_udim2(0, 4, 0, 4),
+		BorderSizePixel = 0,
+		ZIndex = 6,
+		Parent = bell,
+	}))
+
+	create_pill(bell_parts[3])
+
+	local gear = icon_button(icon_right - 18)
+
+	_insert(gear_parts, create_new('Frame', {
+		Position = _new_udim2(0, 2, 0, 2),
+		Size = _new_udim2(0, 12, 0, 12),
+		BorderSizePixel = 0,
+		ZIndex = 6,
+		Parent = gear,
+	}))
+
+	create_pill(gear_parts[1])
+
+	for _, spot in { { 7, 0 }, { 7, 14 }, { 0, 7 }, { 14, 7 } } do
+		_insert(gear_parts, create_new('Frame', {
+			Position = _new_udim2(0, spot[1], 0, spot[2]),
+			Size = _new_udim2(0, 2, 0, 2),
+			BorderSizePixel = 0,
+			ZIndex = 6,
+			Parent = gear,
+		}))
+	end
+
+	local gear_hole = create_new('Frame', {
+		Position = _new_udim2(0, 5, 0, 5),
+		Size = _new_udim2(0, 6, 0, 6),
+		BorderSizePixel = 0,
+		ZIndex = 7,
+		Parent = gear,
+	})
+
+	create_pill(gear_hole)
+	theme.paint(gear_hole, 'BackgroundColor3', 'surface')
+
+	local function paint_icons(hovered)
+		local bell_role = notify_on and 'accent' or 'text_dim'
+		local gear_role = hovered and 'text' or 'text_dim'
+
+		for _, part in bell_parts do
+			theme.paint(part, 'BackgroundColor3', bell_role)
+		end
+
+		for _, part in gear_parts do
+			theme.paint(part, 'BackgroundColor3', gear_role)
+		end
+	end
+
+	paint_icons(false)
+
 	local function render(animate)
 		theme.paint(track, 'BackgroundColor3', state and 'accent' or 'surface_alt')
 		theme.paint(knob, 'BackgroundColor3', state and 'accent_text' or 'text_dim')
@@ -1869,6 +1918,9 @@ local function create_switch(parent, order, values, runtime)
 			end
 		end
 
+		if notify_on and not quiet then
+			library:notify(`{values.title or 'Toggle'}: {state and 'On' or 'Off'}`)
+		end
 	end
 
 	local function set_key(next_key)
@@ -1904,6 +1956,103 @@ local function create_switch(parent, order, values, runtime)
 	click.MouseButton1Click:Connect(function()
 		set_value(not state, true)
 	end)
+
+	bell.MouseButton1Click:Connect(function()
+		notify_on = not notify_on
+
+		if notify_flag then
+			runtime._flags[notify_flag] = notify_on
+			library._save(runtime)
+		end
+
+		paint_icons(false)
+	end)
+
+	gear.MouseEnter:Connect(function()
+		paint_icons(true)
+	end)
+
+	gear.MouseLeave:Connect(function()
+		paint_icons(false)
+	end)
+
+	gear.MouseButton1Click:Connect(function()
+		if runtime._option_menu then
+			runtime._option_menu:Destroy()
+			runtime._option_menu = nil
+		end
+
+		local mouse = user_input_service:GetMouseLocation()
+
+		local menu = create_new('Frame', {
+			Position = _new_udim2(0, mouse.X, 0, mouse.Y),
+			Size = _new_udim2(0, 132, 0, 56),
+			BorderSizePixel = 0,
+			ZIndex = 500,
+			Parent = runtime._ui,
+		})
+
+		theme.paint(menu, 'BackgroundColor3', 'surface')
+		create_round(menu, 6)
+		create_outline(menu)
+		create_padding(menu, 4, 4, 4, 4)
+		create_list(menu, 0)
+
+		runtime._option_menu = menu
+
+		local notify_entry = create_new('TextButton', {
+			BackgroundTransparency = 1,
+			LayoutOrder = 1,
+			Size = _new_udim2(1, 0, 0, 24),
+			FontFace = FONT,
+			Text = `Notify: {notify_on and 'On' or 'Off'}`,
+			TextSize = runtime._label_size,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			AutoButtonColor = false,
+			BorderSizePixel = 0,
+			ZIndex = 501,
+			Parent = menu,
+		})
+
+		theme.paint(notify_entry, 'TextColor3', 'text')
+		create_padding(notify_entry, 0, 0, 8, 8)
+
+		notify_entry.MouseButton1Click:Connect(function()
+			notify_on = not notify_on
+			notify_entry.Text = `Notify: {notify_on and 'On' or 'Off'}`
+
+			if notify_flag then
+				runtime._flags[notify_flag] = notify_on
+				library._save(runtime)
+			end
+
+			paint_icons(false)
+		end)
+
+		local reset_entry = create_new('TextButton', {
+			BackgroundTransparency = 1,
+			LayoutOrder = 2,
+			Size = _new_udim2(1, 0, 0, 24),
+			FontFace = FONT,
+			Text = 'Reset',
+			TextSize = runtime._label_size,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			AutoButtonColor = false,
+			BorderSizePixel = 0,
+			ZIndex = 501,
+			Parent = menu,
+		})
+
+		theme.paint(reset_entry, 'TextColor3', 'text_dim')
+		create_padding(reset_entry, 0, 0, 8, 8)
+
+		reset_entry.MouseButton1Click:Connect(function()
+			set_value(values.default == true, true)
+			menu:Destroy()
+			runtime._option_menu = nil
+		end)
+	end)
+
 
 	if chip then
 		chip.MouseButton1Click:Connect(function()
@@ -2013,7 +2162,6 @@ local function create_switch(parent, order, values, runtime)
 		end)
 	end
 
-	attach_tooltip(runtime, row, values.desc)
 
 	return {
 		set = set_value,
@@ -2189,7 +2337,6 @@ local function create_slider(parent, order, values, runtime)
 		end)
 	end
 
-	attach_tooltip(runtime, row, values.desc)
 
 	return {
 		set = commit,
@@ -2578,7 +2725,6 @@ local function create_dropdown(parent, order, values, runtime)
 		end)
 	end
 
-	attach_tooltip(runtime, container, values.desc)
 
 	return dropdown
 end
@@ -2616,7 +2762,6 @@ local function create_button(parent, order, values, runtime)
 		end
 	end)
 
-	attach_tooltip(runtime, button, values.desc)
 
 	return button
 end
@@ -2692,7 +2837,6 @@ local function create_textbox(parent, order, values, runtime)
 		end)
 	end
 
-	attach_tooltip(runtime, frame, values.desc)
 
 	return {
 		get = function()
@@ -2808,7 +2952,6 @@ local function create_keybind(parent, order, values, runtime)
 		library.register_keybind(runtime, values.flag, values.title or 'Keybind', key.Name)
 	end
 
-	attach_tooltip(runtime, row, values.desc)
 
 	return {
 		get = function()
@@ -3159,7 +3302,6 @@ local function create_colorpicker(parent, order, values, runtime)
 		end)
 	end
 
-	attach_tooltip(runtime, frame, values.desc)
 
 	return {
 		get = function()
