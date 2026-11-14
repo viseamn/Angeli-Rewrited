@@ -1753,6 +1753,14 @@ local function resolve_key(value)
 	return nil
 end
 
+local function format_number(value)
+	if value == _floor(value) then
+		return _tostring(_floor(value))
+	end
+
+	return string.format('%.2f', value)
+end
+
 local function open_settings_panel(runtime, anchor, entries, title)
 	if runtime._settings_panel then
 		runtime._settings_panel:Destroy()
@@ -1848,17 +1856,19 @@ local function open_settings_panel(runtime, anchor, entries, title)
 			Parent = panel,
 		})
 
-		create_label({
-			Position = _new_udim2(0, 0, 0, is_slider and 1 or 0),
-			Size = _new_udim2(1, is_slider and 0 or -104, 0, 18),
-			Text = entry.title or '',
-			TextRole = 'text',
-			TextSize = runtime._label_size,
-			TextXAlignment = Enum.TextXAlignment.Left,
-			TextTruncate = Enum.TextTruncate.AtEnd,
-			ZIndex = 502,
-			Parent = row,
-		})
+		if entry.type ~= 'button' then
+			create_label({
+				Position = _new_udim2(0, 0, 0, is_slider and 1 or 0),
+				Size = _new_udim2(1, is_slider and 0 or -104, 0, 18),
+				Text = entry.title or '',
+				TextRole = 'text',
+				TextSize = runtime._label_size,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				TextTruncate = Enum.TextTruncate.AtEnd,
+				ZIndex = 502,
+				Parent = row,
+			})
+		end
 
 		if entry.type == 'switch' then
 			local state = entry.value == true
@@ -1933,7 +1943,7 @@ local function open_settings_panel(runtime, anchor, entries, title)
 			local readout = create_label({
 				Position = _new_udim2(1, -44, 0, 1),
 				Size = _new_udim2(0, 44, 0, 18),
-				Text = _tostring(value),
+				Text = format_number(value),
 				TextRole = 'text',
 				TextSize = runtime._label_size,
 				TextXAlignment = Enum.TextXAlignment.Right,
@@ -1964,7 +1974,7 @@ local function open_settings_panel(runtime, anchor, entries, title)
 
 			local function set_value(next_value, commit)
 				value = _clamp(next_value, minimum, maximum)
-				readout.Text = _tostring(value)
+				readout.Text = format_number(value)
 				fill.Size = _new_udim2((value - minimum) / span, 0, 1, 0)
 
 				if not commit then
@@ -2091,9 +2101,8 @@ local function open_settings_panel(runtime, anchor, entries, title)
 			end)
 		else
 			local chip = create_new('TextButton', {
-				AnchorPoint = _new_vector2(1, 0.5),
-				Position = _new_udim2(1, 0, 0.5, 0),
-				Size = _new_udim2(0, 100, 0, 22),
+				Position = _new_udim2(0, 0, 0, 0),
+				Size = _new_udim2(1, 0, 0, 22),
 				FontFace = FONT,
 				Text = entry.title or 'Apply',
 				TextSize = runtime._label_size,
@@ -2390,19 +2399,51 @@ local function create_switch(parent, order, values, runtime)
 		end)
 
 		gear.MouseButton1Click:Connect(function()
-			local entries = values.settings
+			local entries = {}
 
-			if _type(entries) ~= 'table' then
-				entries = {
-					{
-						type = 'button',
-						title = 'Reset',
-						callback = function()
-							set_value(values.default == true, true)
-						end,
-					},
-				}
+			if values.notify then
+				_insert(entries, {
+					type = 'switch',
+					title = 'Notify',
+					value = notify_on,
+					callback = function(state)
+						notify_on = state
+
+						if notify_flag then
+							runtime._flags[notify_flag] = state
+							library._save(runtime)
+						end
+
+						paint_icons(false)
+					end,
+				})
 			end
+
+			if key then
+				_insert(entries, {
+					type = 'dropdown',
+					title = 'Mode',
+					options = { 'Toggle', 'Hold', 'Press' },
+					value = mode,
+					callback = function(value)
+						mode = value
+					end,
+				})
+			end
+
+			if _type(values.settings) == 'table' then
+				for _, entry in values.settings do
+					_insert(entries, entry)
+				end
+			end
+
+			_insert(entries, {
+				type = 'button',
+				title = 'Reset',
+				callback = function()
+					set_value(values.default == true, true)
+				end,
+			})
 
 			open_settings_panel(runtime, gear, entries, values.title)
 		end)
