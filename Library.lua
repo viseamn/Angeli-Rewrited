@@ -26,7 +26,6 @@ local text_service = _cloneref(game:GetService('TextService'))
 local http_service = _cloneref(game:GetService('HttpService'))
 local core_gui = _cloneref(game:GetService('CoreGui'))
 local debris = _cloneref(game:GetService('Debris'))
-local run_service = _cloneref(game:GetService('RunService'))
 
 local _new_instance = Instance.new
 local _new_tween_info = TweenInfo.new
@@ -338,9 +337,6 @@ library._new = function(runtime_type)
 	self:_init()
 	self:_init_keybinds()
 
-	theme.on_apply(function()
-		library._refresh_array(self)
-	end)
 	self:set_notify_position(self._notify_position, true)
 
 	if _type(state.themes) == 'table' then
@@ -451,12 +447,6 @@ function library:_init()
 	self._notification_layout = notification_layout
 	self._notification_order = 0
 	self._notifications = {}
-	self._search = {}
-	self._toggles = {}
-	self._array_rows = {}
-	self._array_labels = {}
-	self._array_pending = {}
-	self._rainbow = false
 	self._notify_position = 'bottom-right' 
 
 	local sidebar = create_new('Frame', {
@@ -1010,7 +1000,6 @@ function library:create_tab(title, icon, order, category_name)
 			_order = 0,
 			_title = values.title,
 			_side = values.side,
-			_tab = manager,
 		}
 
 		local frame = create_new('Frame', {
@@ -1331,369 +1320,6 @@ function library:destroy()
 	end
 end
 
-function library:_index(title, tab)
-	if _type(title) ~= 'string' or title == '' or not tab then
-		return
-	end
-
-	_insert(self._search, {
-		title = title,
-		tab = tab,
-	})
-end
-
-function library:open_palette()
-	local runtime = resolve_runtime(self)
-
-	if not runtime or not runtime._ui or runtime._palette then
-		return false
-	end
-
-	local overlay = create_new('TextButton', {
-		BackgroundColor3 = Color3.fromRGB(0, 0, 0),
-		BackgroundTransparency = 0.5,
-		Size = _new_udim2(1, 0, 1, 0),
-		Text = '',
-		AutoButtonColor = false,
-		ZIndex = 600,
-		Parent = runtime._ui,
-	})
-
-	local box = create_new('Frame', {
-		AnchorPoint = _new_vector2(0.5, 0),
-		Position = _new_udim2(0.5, 0, 0, 90),
-		Size = _new_udim2(0, 300, 0, 36),
-		BorderSizePixel = 0,
-		ClipsDescendants = true,
-		ZIndex = 601,
-		Parent = overlay,
-	})
-
-	theme.paint(box, 'BackgroundColor3', 'surface')
-	create_round(box, 8)
-	create_outline(box)
-
-	local input = create_new('TextBox', {
-		Size = _new_udim2(1, 0, 0, 36),
-		ClearTextOnFocus = false,
-		FontFace = FONT,
-		PlaceholderText = 'Search settings',
-		Text = '',
-		TextSize = runtime._label_size,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		BorderSizePixel = 0,
-		ZIndex = 602,
-		Parent = box,
-	})
-
-	theme.paint(input, 'BackgroundColor3', 'surface_alt')
-	theme.paint(input, 'TextColor3', 'text')
-	create_padding(input, 0, 0, 12, 12)
-
-	local list = create_new('ScrollingFrame', {
-		Position = _new_udim2(0, 0, 0, 36),
-		Size = _new_udim2(1, 0, 0, 0),
-		BackgroundTransparency = 1,
-		CanvasSize = _new_udim2(0, 0, 0, 0),
-		AutomaticCanvasSize = Enum.AutomaticSize.Y,
-		ScrollBarThickness = 0,
-		BorderSizePixel = 0,
-		ZIndex = 602,
-		Parent = box,
-	})
-
-	create_padding(list, 4, 4, 4, 4)
-	create_list(list, 2)
-
-	runtime._palette = overlay
-
-	local function close()
-		if runtime._palette == overlay then
-			runtime._palette = nil
-		end
-
-		overlay:Destroy()
-	end
-
-	local function render(query)
-		for _, child in list:GetChildren() do
-			if child:IsA('TextButton') then
-				child:Destroy()
-			end
-		end
-
-		query = string.lower(trim(query))
-
-		local shown = 0
-
-		for _, entry in runtime._search do
-			if shown < 6 and (query == '' or string.find(string.lower(entry.title), query, 1, true)) then
-				shown += 1
-
-				local button = create_new('TextButton', {
-					BackgroundTransparency = 1,
-					LayoutOrder = shown,
-					Size = _new_udim2(1, 0, 0, 26),
-					FontFace = FONT,
-					Text = entry.title,
-					TextSize = runtime._label_size,
-					TextXAlignment = Enum.TextXAlignment.Left,
-					AutoButtonColor = false,
-					BorderSizePixel = 0,
-					ZIndex = 603,
-					Parent = list,
-				})
-
-				theme.paint(button, 'TextColor3', 'text_dim')
-				create_padding(button, 0, 0, 8, 8)
-
-				button.MouseButton1Click:Connect(function()
-					local data = entry.tab._data
-
-					if data then
-						runtime._active_tab = data
-						runtime:update_tabs(data)
-						runtime:update_sections(data._left, data._right, 1)
-					end
-
-					close()
-				end)
-			end
-		end
-
-		list.Size = _new_udim2(1, 0, 0, shown * 28)
-		box.Size = _new_udim2(0, 300, 0, 36 + shown * 28)
-	end
-
-	input:GetPropertyChangedSignal('Text'):Connect(function()
-		render(input.Text)
-	end)
-
-	overlay.MouseButton1Click:Connect(close)
-
-	render('')
-	input:CaptureFocus()
-
-	return true
-end
-
-function library:_refresh_array()
-	local runtime = resolve_runtime(self)
-
-	if not runtime or not runtime._watermark then
-		return
-	end
-
-	for _, row in runtime._array_rows do
-		if row.Parent then
-			row:Destroy()
-		end
-	end
-
-	_clear(runtime._array_rows)
-	_clear(runtime._array_labels)
-
-	local now = os.clock()
-	local names = {}
-	local fading = {}
-
-	for _, entry in runtime._toggles do
-		if entry.get() then
-			_insert(names, entry.title)
-		else
-			local until_time = runtime._array_pending[entry.title]
-
-			if until_time and until_time > now then
-				_insert(names, entry.title)
-				fading[entry.title] = true
-			elseif until_time then
-				runtime._array_pending[entry.title] = nil
-			end
-		end
-	end
-
-	_sort(names)
-
-	if next(fading) then
-		_delay(0.65, function()
-			library._refresh_array(runtime)
-		end)
-	end
-
-	local accent = theme.color('accent')
-	local hue, saturation, value = accent:ToHSV()
-
-	for index, title in names do
-		local row = create_new('Frame', {
-			AutomaticSize = Enum.AutomaticSize.X,
-			LayoutOrder = index,
-			Size = _new_udim2(0, 0, 0, 18),
-			BackgroundTransparency = 1,
-			BorderSizePixel = 0,
-			ZIndex = 151,
-			Parent = runtime._watermark,
-		})
-
-		local label = create_label({
-			AutomaticSize = Enum.AutomaticSize.X,
-			Size = _new_udim2(0, 0, 1, 0),
-			Position = _new_udim2(0, -8, 0, 0),
-			Text = title,
-			TextRole = 'accent',
-			TextSize = runtime._label_size,
-			TextXAlignment = Enum.TextXAlignment.Left,
-			TextTransparency = 1,
-			ZIndex = 152,
-			Parent = row,
-		})
-
-		label.TextColor3 = Color3.fromHSV(
-			(hue + index * 0.045) % 1,
-			_max(saturation, 0.55),
-			_max(value, 0.85)
-		)
-
-		create_new('UIStroke', {
-			Thickness = 1,
-			Color = Color3.fromRGB(0, 0, 0),
-			Transparency = 0.45,
-			Parent = label,
-		})
-
-		local target_transparency = fading[title] and 0.55 or 0
-
-		_create_tween(
-			tween_service,
-			label,
-			_new_tween_info(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.Out, 0, false, index * 0.03),
-			{
-				Position = _new_udim2(0, 0, 0, 0),
-				TextTransparency = target_transparency,
-			}
-		):Play()
-
-		_insert(runtime._array_rows, row)
-		_insert(runtime._array_labels, label)
-	end
-end
-
-function library:set_watermark(state)
-	local runtime = resolve_runtime(self)
-
-	if not runtime or not runtime._notify_gui then
-		return false
-	end
-
-	if runtime._watermark then
-		runtime._watermark:Destroy()
-		runtime._watermark = nil
-	end
-
-	_clear(runtime._array_rows)
-	_clear(runtime._array_labels)
-
-	if not state then
-		runtime._watermark_header = nil
-		return true
-	end
-
-	local root = create_new('Frame', {
-		Name = '_watermark',
-		AnchorPoint = _new_vector2(0, 0),
-		Position = _new_udim2(0, 10, 0, 64),
-		AutomaticSize = Enum.AutomaticSize.Y,
-		Size = _new_udim2(0, 0, 0, 0),
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-		ZIndex = 150,
-		Parent = runtime._notify_gui,
-	})
-
-	create_new('UIListLayout', {
-		FillDirection = Enum.FillDirection.Vertical,
-		HorizontalAlignment = Enum.HorizontalAlignment.Left,
-		SortOrder = Enum.SortOrder.LayoutOrder,
-		Padding = _new_udim(0, 0),
-		Parent = root,
-	})
-
-	local header = create_new('ImageLabel', {
-		LayoutOrder = 0,
-		AutomaticSize = Enum.AutomaticSize.X,
-		Size = _new_udim2(0, 0, 0, 34),
-		BackgroundTransparency = 1,
-		Image = 'rbxassetid://95943456246483',
-		BorderSizePixel = 0,
-		ZIndex = 151,
-		Parent = root,
-	})
-
-	runtime._watermark = root
-	runtime._watermark_header = header
-
-	local dragging = false
-	local start = nil
-	local origin = nil
-
-	header.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			dragging = true
-			start = input.Position
-			origin = root.Position
-		end
-	end)
-
-	watch(user_input_service.InputChanged, function(input)
-		if not dragging then
-			return
-		end
-
-		if input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch then
-			return
-		end
-
-		local delta = input.Position - start
-
-		root.Position = _new_udim2(
-			origin.X.Scale,
-			origin.X.Offset + delta.X,
-			origin.Y.Scale,
-			origin.Y.Offset + delta.Y
-		)
-	end)
-
-	watch(user_input_service.InputEnded, function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			dragging = false
-		end
-	end)
-
-	library._refresh_array(runtime)
-
-	if not runtime._rainbow then
-		runtime._rainbow = true
-
-		watch(run_service.Heartbeat, function(delta)
-			if not runtime._watermark then
-				return
-			end
-
-			local hue, saturation, value = theme.color('accent'):ToHSV()
-			local shift = (os.clock() * 0.12) % 1
-
-			for index, label in runtime._array_labels do
-				label.TextColor3 = Color3.fromHSV(
-					(hue + shift + index * 0.045) % 1,
-					_max(saturation, 0.55),
-					_max(value, 0.85)
-				)
-			end
-		end)
-	end
-
-	return true
-end
-
 function library:save_theme(name)
 	name = trim(name)
 
@@ -1833,8 +1459,8 @@ function library:notify(message)
 
 	local bar = create_new('Frame', {
 		AnchorPoint = _new_vector2(0, 1),
-		Position = _new_udim2(0, 8, 1, -2),
-		Size = _new_udim2(1, -16, 0, 3),
+		Position = _new_udim2(0, 6, 1, 0),
+		Size = _new_udim2(1, -12, 0, 3),
 		BorderSizePixel = 0,
 		BackgroundTransparency = 1,
 		ZIndex = 203,
@@ -2229,10 +1855,6 @@ local function create_switch(parent, order, values, runtime)
 		state = value == true
 		render(animate)
 
-		if previous ~= state and values.array ~= false then
-			runtime._array_pending[values.title or 'Toggle'] = state and nil or (os.clock() + 0.6)
-		end
-
 		if values.flag then
 			runtime._flags[values.flag] = state
 			if not silent then
@@ -2247,7 +1869,6 @@ local function create_switch(parent, order, values, runtime)
 			end
 		end
 
-		library._refresh_array(runtime)
 	end
 
 	local function set_key(next_key)
@@ -2393,15 +2014,6 @@ local function create_switch(parent, order, values, runtime)
 	end
 
 	attach_tooltip(runtime, row, values.desc)
-
-	if values.array ~= false then
-		_insert(runtime._toggles, {
-			title = values.title or 'Toggle',
-			get = function()
-				return state
-			end,
-		})
-	end
 
 	return {
 		set = set_value,
@@ -3571,7 +3183,6 @@ function group_methods:create_toggle(flag, values)
 	end
 	values = values or {}
 	values.flag = flag
-	self._runtime:_index(values.title, self._tab)
 	return create_switch(self._frame, self:_next_order(), values, self._runtime)
 end
 
@@ -3582,7 +3193,6 @@ function group_methods:create_slider(flag, values)
 	end
 	values = values or {}
 	values.flag = flag
-	self._runtime:_index(values.title, self._tab)
 	return create_slider(self._frame, self:_next_order(), values, self._runtime)
 end
 
@@ -3593,7 +3203,6 @@ function group_methods:create_dropdown(flag, values)
 	end
 	values = values or {}
 	values.flag = flag
-	self._runtime:_index(values.title, self._tab)
 	return create_dropdown(self._frame, self:_next_order(), values, self._runtime)
 end
 
@@ -3602,7 +3211,6 @@ function group_methods:create_button(flag, values)
 		values = flag
 	end
 	values = values or {}
-	self._runtime:_index(values.title, self._tab)
 	return create_button(self._frame, self:_next_order(), values, self._runtime)
 end
 
@@ -3613,7 +3221,6 @@ function group_methods:create_textbox(flag, values)
 	end
 	values = values or {}
 	values.flag = flag
-	self._runtime:_index(values.title, self._tab)
 	return create_textbox(self._frame, self:_next_order(), values, self._runtime)
 end
 
@@ -3624,7 +3231,6 @@ function group_methods:create_colorpicker(flag, values)
 	end
 	values = values or {}
 	values.flag = flag
-	self._runtime:_index(values.title, self._tab)
 	return create_colorpicker(self._frame, self:_next_order(), values, self._runtime)
 end
 
@@ -3635,7 +3241,6 @@ function group_methods:create_keybind(flag, values)
 	end
 	values = values or {}
 	values.flag = flag
-	self._runtime:_index(values.title, self._tab)
 	return create_keybind(self._frame, self:_next_order(), values, self._runtime)
 end
 
