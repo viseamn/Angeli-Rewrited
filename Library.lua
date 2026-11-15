@@ -79,6 +79,39 @@ local NOTIFY_ANCHORS = {
 local theme
 local save_manager
 
+local painted = {}
+
+local function paint(instance, property, role)
+	if not theme then
+		return
+	end
+
+	theme.paint(instance, property, role)
+
+	local properties = painted[instance]
+
+	if not properties then
+		properties = {}
+		painted[instance] = properties
+	end
+
+	properties[property] = role
+end
+
+local function repaint_all()
+	for instance, properties in _pairs(painted) do
+		if not instance.Parent then
+			painted[instance] = nil
+		else
+			for property, role in _pairs(properties) do
+				_pcall(function()
+					instance[property] = theme.color(role)
+				end)
+			end
+		end
+	end
+end
+
 local column_base = setmetatable({}, { __mode = 'k' })
 local connections = {}
 
@@ -147,7 +180,7 @@ local create_outline = LPH_NO_VIRTUALIZE(function(instance, refresh)
 		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
 		Parent = instance,
 	})
-	theme.paint(stroke, 'Color', 'stroke')
+	paint(stroke, 'Color', 'stroke')
 	if refresh then
 		instance:GetPropertyChangedSignal('AbsoluteSize'):Connect(function()
 			stroke.Enabled = false
@@ -183,7 +216,7 @@ local create_label = LPH_NO_VIRTUALIZE(function(properties)
 	properties.BorderSizePixel = 0
 	properties.TextColor3 = properties.TextColor3 or theme.color(role)
 	local label = create_new('TextLabel', properties)
-	theme.paint(label, 'TextColor3', role)
+	paint(label, 'TextColor3', role)
 	return label
 end)
 
@@ -194,7 +227,7 @@ local create_divider = LPH_NO_VIRTUALIZE(function(parent, position, size)
 		BorderSizePixel = 0,
 		Parent = parent,
 	})
-	theme.paint(divider, 'BackgroundColor3', 'stroke')
+	paint(divider, 'BackgroundColor3', 'stroke')
 	return divider
 end)
 
@@ -271,6 +304,10 @@ library.__index = library
 function library.attach(theme_module, save_module)
 	theme = theme_module
 	save_manager = save_module
+
+	if theme and theme.on_apply then
+		theme.on_apply(repaint_all)
+	end
 end
 
 local interface_parent = (gethui and gethui()) or core_gui
@@ -459,7 +496,7 @@ function library:_init()
 		Parent = gui,
 	})
 
-	theme.paint(container, 'BackgroundColor3', 'bg')
+	paint(container, 'BackgroundColor3', 'bg')
 	create_round(container, 8)
 	create_outline(container)
 
@@ -548,7 +585,7 @@ function library:_init()
 		Parent = logo_area,
 	})
 
-	theme.paint(saved_dot, 'BackgroundColor3', 'accent')
+	paint(saved_dot, 'BackgroundColor3', 'accent')
 	create_pill(saved_dot)
 
 	self._saved_dot = saved_dot
@@ -563,7 +600,7 @@ function library:_init()
 		Parent = sidebar,
 	})
 
-	theme.paint(highlight, 'BackgroundColor3', 'surface_alt')
+	paint(highlight, 'BackgroundColor3', 'surface_alt')
 	create_round(highlight, 6)
 
 	self._highlight = highlight
@@ -576,7 +613,7 @@ function library:_init()
 		Parent = sidebar,
 	})
 
-	theme.paint(pin, 'BackgroundColor3', 'accent')
+	paint(pin, 'BackgroundColor3', 'accent')
 	create_pill(pin)
 
 	local tabs_container = create_scroller(sidebar, _new_udim2(0, 0, 0, 48), _new_udim2(1, 0, 1, -48))
@@ -632,7 +669,7 @@ function library:_init()
 		Parent = mobile_toggle_gui,
 	})
 
-	theme.paint(mobile_toggle, 'BackgroundColor3', 'surface')
+	paint(mobile_toggle, 'BackgroundColor3', 'surface')
 	create_round(mobile_toggle, 8)
 	create_outline(mobile_toggle)
 
@@ -646,7 +683,7 @@ function library:_init()
 		Parent = mobile_toggle,
 	})
 
-	theme.paint(toggle_icon, 'ImageColor3', 'text')
+	paint(toggle_icon, 'ImageColor3', 'text')
 
 	local apply_scale = LPH_NO_VIRTUALIZE(function()
 		if self._is_mobile then
@@ -948,7 +985,7 @@ function library:create_tab(title, icon, order, category_name)
 		Parent = button,
 	})
 
-	theme.paint(icon_label, 'ImageColor3', 'text_dim')
+	paint(icon_label, 'ImageColor3', 'text_dim')
 
 	local title_label = create_label({
 		Position = _new_udim2(0, 34, 0, 0),
@@ -1085,7 +1122,7 @@ function library:create_tab(title, icon, order, category_name)
 			Parent = values.side == 'left' and left or right,
 		})
 
-		theme.paint(frame, 'BackgroundColor3', 'surface')
+		paint(frame, 'BackgroundColor3', 'surface')
 		create_round(frame, 8)
 		create_outline(frame, true)
 		create_padding(frame, 12, 12, 12, 12)
@@ -1134,8 +1171,8 @@ function library:update_tabs(tab)
 		data._active = active
 
 		data._button.BackgroundTransparency = 1
-		theme.paint(data._label, 'TextColor3', active and 'text' or 'text_dim')
-		theme.paint(data._icon, 'ImageColor3', active and 'text' or 'text_dim')
+		paint(data._label, 'TextColor3', active and 'text' or 'text_dim')
+		paint(data._icon, 'ImageColor3', active and 'text' or 'text_dim')
 	end
 
 	if tab then
@@ -1216,7 +1253,7 @@ function library:confirm(message, callback)
 		Parent = overlay,
 	})
 
-	theme.paint(card, 'BackgroundColor3', 'surface')
+	paint(card, 'BackgroundColor3', 'surface')
 	create_round(card, 8)
 	create_outline(card)
 
@@ -1262,8 +1299,8 @@ function library:confirm(message, callback)
 		Parent = card,
 	})
 
-	theme.paint(cancel, 'BackgroundColor3', 'surface_alt')
-	theme.paint(cancel, 'TextColor3', 'text_dim')
+	paint(cancel, 'BackgroundColor3', 'surface_alt')
+	paint(cancel, 'TextColor3', 'text_dim')
 	create_round(cancel, 6)
 
 	local accept = create_new('TextButton', {
@@ -1279,8 +1316,8 @@ function library:confirm(message, callback)
 		Parent = card,
 	})
 
-	theme.paint(accept, 'BackgroundColor3', 'accent')
-	theme.paint(accept, 'TextColor3', 'accent_text')
+	paint(accept, 'BackgroundColor3', 'accent')
+	paint(accept, 'TextColor3', 'accent_text')
 	create_round(accept, 6)
 
 	cancel.MouseButton1Click:Connect(function()
@@ -1326,7 +1363,10 @@ end
 
 function library:destroy()
 	if self._dropdown_refresher then
-		theme.off_apply(self._dropdown_refresher)
+		if theme.off_apply then
+			theme.off_apply(self._dropdown_refresher)
+		end
+
 		self._dropdown_refresher = nil
 	end
 
@@ -1440,7 +1480,7 @@ function library:notify(message)
 		Parent = slot,
 	})
 
-	theme.paint(card, 'BackgroundColor3', 'surface')
+	paint(card, 'BackgroundColor3', 'surface')
 	create_round(card, 6)
 
 	local icon = create_new('Frame', {
@@ -1461,7 +1501,7 @@ function library:notify(message)
 		Parent = icon,
 	})
 
-	theme.paint(icon_stroke, 'Color', 'text')
+	paint(icon_stroke, 'Color', 'text')
 	icon_stroke.Transparency = 1
 
 	local icon_label = create_label({
@@ -1499,7 +1539,7 @@ function library:notify(message)
 		Parent = card,
 	})
 
-	theme.paint(bar, 'BackgroundColor3', 'accent')
+	paint(bar, 'BackgroundColor3', 'accent')
 	create_round(bar, 6)
 
 	local bar_cover = create_new('Frame', {
@@ -1510,7 +1550,7 @@ function library:notify(message)
 		Parent = card,
 	})
 
-	theme.paint(bar_cover, 'BackgroundColor3', 'surface')
+	paint(bar_cover, 'BackgroundColor3', 'surface')
 
 	local active = runtime._notifications
 
@@ -1603,7 +1643,7 @@ function library:_init_keybinds()
 		Parent = self._ui,
 	})
 
-	theme.paint(frame, 'BackgroundColor3', 'bg')
+	paint(frame, 'BackgroundColor3', 'bg')
 	create_round(frame, 4)
 	create_outline(frame, true)
 	create_list(frame)
@@ -1626,7 +1666,7 @@ function library:_init_keybinds()
 		Parent = header,
 	})
 
-	theme.paint(icon, 'ImageColor3', 'text')
+	paint(icon, 'ImageColor3', 'text')
 
 	create_label({
 		Size = _new_udim2(1, 0, 1, 0),
@@ -1871,8 +1911,8 @@ local function create_switch(parent, order, values, runtime)
 			Parent = row,
 		})
 
-		theme.paint(chip, 'BackgroundColor3', 'surface_alt')
-		theme.paint(chip, 'TextColor3', 'text')
+		paint(chip, 'BackgroundColor3', 'surface_alt')
+		paint(chip, 'TextColor3', 'text')
 		create_round(chip, 4)
 		create_outline(chip)
 		create_padding(chip, 0, 0, 5, 5)
@@ -1916,7 +1956,7 @@ local function create_switch(parent, order, values, runtime)
 		})
 
 		return function(role)
-			theme.paint(image, 'ImageColor3', role)
+			paint(image, 'ImageColor3', role)
 		end
 	end
 
@@ -1958,9 +1998,9 @@ local function create_switch(parent, order, values, runtime)
 	paint_icons(false)
 
 	local function render(animate)
-		theme.paint(track, 'BackgroundColor3', state and 'accent' or 'surface_alt')
-		theme.paint(knob, 'BackgroundColor3', state and 'accent_text' or 'text_dim')
-		theme.paint(label, 'TextColor3', state and 'text' or 'text_dim')
+		paint(track, 'BackgroundColor3', state and 'accent' or 'surface_alt')
+		paint(knob, 'BackgroundColor3', state and 'accent_text' or 'text_dim')
+		paint(label, 'TextColor3', state and 'text' or 'text_dim')
 
 		local target = state and on or off
 		if animate then
@@ -2124,7 +2164,7 @@ local function create_switch(parent, order, values, runtime)
 				Parent = runtime._ui,
 			})
 
-			theme.paint(menu, 'BackgroundColor3', 'surface')
+			paint(menu, 'BackgroundColor3', 'surface')
 			create_round(menu, 6)
 			create_outline(menu)
 			create_padding(menu, 4, 4, 4, 4)
@@ -2146,7 +2186,7 @@ local function create_switch(parent, order, values, runtime)
 					Parent = menu,
 				})
 
-				theme.paint(entry, 'TextColor3', option == mode and 'text' or 'text_dim')
+				paint(entry, 'TextColor3', option == mode and 'text' or 'text_dim')
 
 				entry.MouseButton1Click:Connect(function()
 					mode = option
@@ -2280,7 +2320,7 @@ local function create_slider(parent, order, values, runtime)
 		Parent = track_button,
 	})
 
-	theme.paint(track, 'BackgroundColor3', 'surface_alt')
+	paint(track, 'BackgroundColor3', 'surface_alt')
 	create_pill(track)
 
 	local fill = create_new('Frame', {
@@ -2289,7 +2329,7 @@ local function create_slider(parent, order, values, runtime)
 		Parent = track,
 	})
 
-	theme.paint(fill, 'BackgroundColor3', 'accent')
+	paint(fill, 'BackgroundColor3', 'accent')
 	create_pill(fill)
 
 	local knob = create_new('Frame', {
@@ -2300,7 +2340,7 @@ local function create_slider(parent, order, values, runtime)
 		Parent = fill,
 	})
 
-	theme.paint(knob, 'BackgroundColor3', 'accent')
+	paint(knob, 'BackgroundColor3', 'accent')
 	create_pill(knob)
 
 	local function commit(next_value, animate, silent, quiet)
@@ -2453,11 +2493,10 @@ local function create_dropdown(parent, order, values, runtime)
 		Size = _new_udim2(1, 0, 0, 0),
 		BorderSizePixel = 0,
 		BackgroundTransparency = compact and 1 or 0,
-		ClipsDescendants = true,
 		Parent = container,
 	})
 
-	theme.paint(box, 'BackgroundColor3', 'surface_alt')
+	paint(box, 'BackgroundColor3', 'surface_alt')
 	create_round(box, 6)
 	create_list(box)
 
@@ -2516,7 +2555,7 @@ local function create_dropdown(parent, order, values, runtime)
 			Image = 'rbxassetid://10734899821',
 			Parent = header,
 		})
-		theme.paint(chevron, 'ImageColor3', 'text_dim')
+		paint(chevron, 'ImageColor3', 'text_dim')
 	end
 
 	local list = create_scroller(box, _new_udim2(0, 0, 0, compact and 26 or 24), _new_udim2(1, 0, 0, 0))
@@ -2524,7 +2563,7 @@ local function create_dropdown(parent, order, values, runtime)
 	create_list(list)
 
 	if compact then
-		theme.paint(list, 'BackgroundColor3', 'surface_alt')
+		paint(list, 'BackgroundColor3', 'surface_alt')
 		list.BackgroundTransparency = 0
 		create_round(list, 6)
 		create_padding(list, 4, 4, 4, 4)
@@ -2571,12 +2610,12 @@ local function create_dropdown(parent, order, values, runtime)
 
 		if compact and value_label then
 			value_label.Text = text
-			theme.paint(value_label, 'TextColor3', role)
+			paint(value_label, 'TextColor3', role)
 			return
 		end
 
 		header_label.Text = text
-		theme.paint(header_label, 'TextColor3', role)
+		paint(header_label, 'TextColor3', role)
 	end
 
 	local function refresh_labels()
@@ -2584,7 +2623,7 @@ local function create_dropdown(parent, order, values, runtime)
 			local label = button:FindFirstChildWhichIsA('TextLabel')
 			if label then
 				local is_selected = multi and selected[option] or option == current
-				theme.paint(label, 'TextColor3', is_selected and 'text' or 'text_dim')
+				paint(label, 'TextColor3', is_selected and 'text' or 'text_dim')
 				label.TextTransparency = is_selected and 0.2 or 0.5
 				button.Visible = not (values.hide_selected_option and is_selected and not multi)
 			end
@@ -2813,19 +2852,19 @@ local function create_dropdown(parent, order, values, runtime)
 	refresh_labels()
 
 	dropdown._repaint = function()
-		theme.paint(box, 'BackgroundColor3', 'surface_alt')
-		theme.paint(header_label, 'TextColor3', compact and 'text_dim' or 'text')
+		paint(box, 'BackgroundColor3', 'surface_alt')
+		paint(header_label, 'TextColor3', compact and 'text_dim' or 'text')
 
 		if value_label then
-			theme.paint(value_label, 'TextColor3', 'text')
+			paint(value_label, 'TextColor3', 'text')
 		end
 
 		if chevron then
-			theme.paint(chevron, 'ImageColor3', 'text_dim')
+			paint(chevron, 'ImageColor3', 'text_dim')
 		end
 
 		if compact then
-			theme.paint(list, 'BackgroundColor3', 'surface_alt')
+			paint(list, 'BackgroundColor3', 'surface_alt')
 		end
 
 		render_header()
@@ -2862,8 +2901,8 @@ local function create_button(parent, order, values, runtime)
 		Parent = parent,
 	})
 
-	theme.paint(button, 'BackgroundColor3', base_role)
-	theme.paint(button, 'TextColor3', primary and 'accent_text' or 'text')
+	paint(button, 'BackgroundColor3', base_role)
+	paint(button, 'TextColor3', primary and 'accent_text' or 'text')
 	create_round(button, 6)
 
 	button.MouseButton1Click:Connect(function()
@@ -2925,9 +2964,9 @@ local function create_textbox(parent, order, values, runtime)
 		Parent = frame,
 	})
 
-	theme.paint(box, 'BackgroundColor3', 'surface_alt')
-	theme.paint(box, 'TextColor3', 'text')
-	theme.paint(box, 'PlaceholderColor3', 'text_dim')
+	paint(box, 'BackgroundColor3', 'surface_alt')
+	paint(box, 'TextColor3', 'text')
+	paint(box, 'PlaceholderColor3', 'text_dim')
 	create_round(box, 6)
 	create_padding(box, 0, 0, 10, 10)
 
@@ -3024,8 +3063,8 @@ local function create_keybind(parent, order, values, runtime)
 		Parent = row,
 	})
 
-	theme.paint(bind, 'BackgroundColor3', 'surface_alt')
-	theme.paint(bind, 'TextColor3', 'text')
+	paint(bind, 'BackgroundColor3', 'surface_alt')
+	paint(bind, 'TextColor3', 'text')
 	create_round(bind, 6)
 	create_padding(bind, 0, 0, 8, 8)
 
@@ -3110,6 +3149,8 @@ open_settings_panel = function(runtime, anchor, entries, title)
 		Parent = container,
 	})
 
+	create_round(backdrop, 8)
+
 	_create_tween(tween_service, backdrop, _new_tween_info(0.18), {
 		BackgroundTransparency = 0.5,
 	}):Play()
@@ -3123,7 +3164,7 @@ open_settings_panel = function(runtime, anchor, entries, title)
 		Parent = container,
 	})
 
-	theme.paint(panel, 'BackgroundColor3', 'surface')
+	paint(panel, 'BackgroundColor3', 'surface')
 	create_round(panel, 10)
 	create_outline(panel)
 	create_padding(panel, 10, 10, 12, 12)

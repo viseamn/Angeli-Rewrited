@@ -7,7 +7,7 @@ local theme = {
 	_current = nil,
 	_order = {},
 	_palettes = {},
-	_bindings = setmetatable({}, { __mode = 'k' }),
+	_bindings = {},
 	_refreshers = {},
 	_persist = nil,
 }
@@ -73,6 +73,14 @@ function theme.on_apply(callback)
 	return callback
 end
 
+function theme.off_apply(callback)
+	for index = #theme._refreshers, 1, -1 do
+		if theme._refreshers[index] == callback then
+			table.remove(theme._refreshers, index)
+		end
+	end
+end
+
 function theme.on_persist(callback)
 	theme._persist = callback
 end
@@ -84,11 +92,22 @@ function theme.apply(name, persist)
 	end
 	theme._name = name
 	theme._current = palette
+
 	for instance, properties in _pairs(theme._bindings) do
-		for property, role in _pairs(properties) do
-			_pcall(function()
-				instance[property] = palette[role] or palette.text
-			end)
+		local parent = nil
+
+		_pcall(function()
+			parent = instance.Parent
+		end)
+
+		if parent == nil then
+			theme._bindings[instance] = nil
+		else
+			for property, role in _pairs(properties) do
+				_pcall(function()
+					instance[property] = palette[role] or palette.text
+				end)
+			end
 		end
 	end
 	for _, callback in _pairs(theme._refreshers) do
