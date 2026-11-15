@@ -3133,10 +3133,27 @@ open_settings_panel = function(runtime, anchor, entries, title)
 	local container = runtime._container
 	local container_pos = container.AbsolutePosition
 	local origin = anchor.AbsolutePosition
+	local anchor_size = anchor.AbsoluteSize
 	local anchor_x = (origin.X - container_pos.X) / scale
-	local anchor_y = (origin.Y - container_pos.Y) / scale
+	local anchor_y = (origin.Y - container_pos.Y + anchor_size.Y) / scale + 4
 	local x = _clamp(anchor_x, SIDEBAR_WIDTH + 10, WINDOW_WIDTH - width - 10)
-	local y = _clamp(anchor_y, 8, WINDOW_HEIGHT - 60)
+	local estimate = 20
+
+	for index, entry in entries or {} do
+		local row = 26
+
+		if entry.type == 'slider' then
+			row = 34
+		elseif entry.type == 'button' then
+			row = 28
+		elseif entry.type == 'textbox' then
+			row = 46
+		end
+
+		estimate += row + (index > 1 and 8 or 0)
+	end
+
+	local y = _clamp(anchor_y, 8, _max(8, WINDOW_HEIGHT - estimate - 10))
 
 	local backdrop = create_new('TextButton', {
 		BackgroundColor3 = Color3.fromRGB(0, 0, 0),
