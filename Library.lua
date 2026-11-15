@@ -1820,6 +1820,358 @@ local function resolve_key(value)
 	return nil
 end
 
+local function to_hex(color)
+	local r = _floor(color.R * 255 + 0.5)
+	local g = _floor(color.G * 255 + 0.5)
+	local b = _floor(color.B * 255 + 0.5)
+
+	return string.format('#%02X%02X%02X', r, g, b)
+end
+
+local function from_hex(text)
+	local r, g, b = string.match(_tostring(text or ''), '^#?(%x%x)(%x%x)(%x%x)$')
+
+	if not r then
+		return nil
+	end
+
+	return Color3.fromRGB(tonumber(r, 16), tonumber(g, 16), tonumber(b, 16))
+end
+
+local function open_color_popover(runtime, anchor, initial, on_change, on_close)
+	if runtime._color_panel then
+		runtime._color_panel:Destroy()
+		runtime._color_panel = nil
+	end
+
+	if runtime._color_backdrop then
+		runtime._color_backdrop:Destroy()
+		runtime._color_backdrop = nil
+	end
+
+	local color = initial or Color3.fromRGB(255, 255, 255)
+	local h, s, v = color:ToHSV()
+	local width = 170
+	local scale = runtime._ui_scale
+	local container = runtime._container
+	local container_pos = container.AbsolutePosition
+	local origin = anchor.AbsolutePosition
+	local anchor_size = anchor.AbsoluteSize
+	local anchor_x = (origin.X - container_pos.X) / scale
+	local anchor_y = (origin.Y - container_pos.Y + anchor_size.Y) / scale + 4
+	local x = _clamp(anchor_x, SIDEBAR_WIDTH + 10, WINDOW_WIDTH - width - 10)
+	local y = _clamp(anchor_y, 8, _max(8, WINDOW_HEIGHT - 190))
+
+	local backdrop = create_new('TextButton', {
+		BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+		BackgroundTransparency = 1,
+		Size = _new_udim2(1, 0, 1, 0),
+		Text = '',
+		AutoButtonColor = false,
+		BorderSizePixel = 0,
+		ZIndex = 498,
+		Parent = container,
+	})
+
+	create_round(backdrop, 8)
+
+	_create_tween(tween_service, backdrop, _new_tween_info(0.18), {
+		BackgroundTransparency = 0.5,
+	}):Play()
+
+	local panel = create_new('Frame', {
+		Position = _new_udim2(0, x, 0, y + 4),
+		Size = _new_udim2(0, width, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		BorderSizePixel = 0,
+		ZIndex = 500,
+		Parent = container,
+	})
+
+	paint(panel, 'BackgroundColor3', 'surface')
+	create_round(panel, 10)
+	create_outline(panel)
+	create_padding(panel, 10, 10, 10, 10)
+	create_list(panel, 10)
+
+	local pop = create_new('UIScale', {
+		Scale = 0.94,
+		Parent = panel,
+	})
+
+	_create_tween(tween_service, pop, _new_tween_info(0.2, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+		Scale = 1,
+	}):Play()
+
+	_create_tween(tween_service, panel, _new_tween_info(0.2, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+		Position = _new_udim2(0, x, 0, y),
+	}):Play()
+
+	local sv = create_new('Frame', {
+		LayoutOrder = 0,
+		Size = _new_udim2(1, 0, 0, 100),
+		BorderSizePixel = 0,
+		ClipsDescendants = true,
+		ZIndex = 501,
+		Parent = panel,
+	})
+
+	create_round(sv, 6)
+
+	local white_layer = create_new('Frame', {
+		Size = _new_udim2(1, 0, 1, 0),
+		BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+		BorderSizePixel = 0,
+		ZIndex = 501,
+		Parent = sv,
+	})
+
+	create_new('UIGradient', {
+		Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0),
+			NumberSequenceKeypoint.new(1, 1),
+		}),
+		Parent = white_layer,
+	})
+
+	local black_layer = create_new('Frame', {
+		Size = _new_udim2(1, 0, 1, 0),
+		BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+		BorderSizePixel = 0,
+		ZIndex = 502,
+		Parent = sv,
+	})
+
+	create_new('UIGradient', {
+		Rotation = 90,
+		Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 1),
+			NumberSequenceKeypoint.new(1, 0),
+		}),
+		Parent = black_layer,
+	})
+
+	local sv_marker = create_new('Frame', {
+		AnchorPoint = _new_vector2(0.5, 0.5),
+		Size = _new_udim2(0, 10, 0, 10),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		ZIndex = 503,
+		Parent = sv,
+	})
+
+	create_pill(sv_marker)
+
+	create_new('UIStroke', {
+		Thickness = 2,
+		Color = Color3.fromRGB(255, 255, 255),
+		Parent = sv_marker,
+	})
+
+	local hue_bar = create_new('Frame', {
+		LayoutOrder = 1,
+		Size = _new_udim2(1, 0, 0, 10),
+		BorderSizePixel = 0,
+		ClipsDescendants = true,
+		ZIndex = 501,
+		Parent = panel,
+	})
+
+	create_pill(hue_bar)
+
+	local hue_fill = create_new('Frame', {
+		Size = _new_udim2(1, 0, 1, 0),
+		BorderSizePixel = 0,
+		ZIndex = 501,
+		Parent = hue_bar,
+	})
+
+	create_new('UIGradient', {
+		Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 0, 0)),
+			ColorSequenceKeypoint.new(1 / 6, Color3.fromRGB(255, 255, 0)),
+			ColorSequenceKeypoint.new(2 / 6, Color3.fromRGB(0, 255, 0)),
+			ColorSequenceKeypoint.new(3 / 6, Color3.fromRGB(0, 255, 255)),
+			ColorSequenceKeypoint.new(4 / 6, Color3.fromRGB(0, 0, 255)),
+			ColorSequenceKeypoint.new(5 / 6, Color3.fromRGB(255, 0, 255)),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 0, 0)),
+		}),
+		Parent = hue_fill,
+	})
+
+	local hue_marker = create_new('Frame', {
+		AnchorPoint = _new_vector2(0.5, 0.5),
+		Position = _new_udim2(h, 0, 0.5, 0),
+		Size = _new_udim2(0, 4, 0, 14),
+		BorderSizePixel = 0,
+		ZIndex = 503,
+		Parent = hue_bar,
+	})
+
+	create_pill(hue_marker)
+
+	create_new('UIStroke', {
+		Thickness = 1,
+		Color = Color3.fromRGB(255, 255, 255),
+		Parent = hue_marker,
+	})
+
+	local hex_box = create_new('TextBox', {
+		LayoutOrder = 2,
+		Size = _new_udim2(1, 0, 0, 24),
+		ClearTextOnFocus = false,
+		FontFace = FONT,
+		PlaceholderText = '#FFFFFF',
+		Text = to_hex(color),
+		TextSize = runtime._label_size,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		BorderSizePixel = 0,
+		ZIndex = 501,
+		Parent = panel,
+	})
+
+	paint(hex_box, 'BackgroundColor3', 'surface_alt')
+	paint(hex_box, 'TextColor3', 'text')
+	create_round(hex_box, 6)
+
+	local dragging = nil
+	local syncing = false
+
+	local function apply(commit)
+		color = Color3.fromHSV(h, s, v)
+
+		sv.BackgroundColor3 = Color3.fromHSV(h, 1, 1)
+		sv_marker.Position = _new_udim2(s, 0, 1 - v, 0)
+		hue_marker.Position = _new_udim2(h, 0, 0.5, 0)
+
+		syncing = true
+		hex_box.Text = to_hex(color)
+		syncing = false
+
+		if commit and on_change then
+			_pcall(on_change, color)
+		end
+	end
+
+	local function drag_sv(input)
+		local size = sv.AbsoluteSize
+
+		if size.X <= 0 or size.Y <= 0 then
+			return
+		end
+
+		s = _clamp((input.Position.X - sv.AbsolutePosition.X) / size.X, 0, 1)
+		v = 1 - _clamp((input.Position.Y - sv.AbsolutePosition.Y) / size.Y, 0, 1)
+		apply(true)
+	end
+
+	local function drag_hue(input)
+		local size = hue_bar.AbsoluteSize
+
+		if size.X <= 0 then
+			return
+		end
+
+		h = _clamp((input.Position.X - hue_bar.AbsolutePosition.X) / size.X, 0, 1)
+		apply(true)
+	end
+
+	sv.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = 'sv'
+			drag_sv(input)
+		end
+	end)
+
+	hue_bar.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = 'hue'
+			drag_hue(input)
+		end
+	end)
+
+	watch(user_input_service.InputChanged, function(input)
+		if not dragging or not panel.Parent then
+			return
+		end
+
+		if input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch then
+			return
+		end
+
+		if dragging == 'sv' then
+			drag_sv(input)
+		else
+			drag_hue(input)
+		end
+	end)
+
+	watch(user_input_service.InputEnded, function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = nil
+		end
+	end)
+
+	hex_box.FocusLost:Connect(function()
+		local parsed = from_hex(hex_box.Text)
+
+		if parsed then
+			h, s, v = parsed:ToHSV()
+			apply(true)
+		else
+			hex_box.Text = to_hex(color)
+		end
+	end)
+
+	local closing = false
+
+	local function close()
+		if closing then
+			return
+		end
+
+		closing = true
+
+		_create_tween(tween_service, pop, _new_tween_info(0.14, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
+			Scale = 0.95,
+		}):Play()
+
+		_create_tween(tween_service, panel, _new_tween_info(0.14, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
+			Position = _new_udim2(0, x, 0, y + 4),
+		}):Play()
+
+		_create_tween(tween_service, backdrop, _new_tween_info(0.14), {
+			BackgroundTransparency = 1,
+		}):Play()
+
+		_delay(0.16, function()
+			if panel.Parent then
+				panel:Destroy()
+			end
+
+			if backdrop.Parent then
+				backdrop:Destroy()
+			end
+		end)
+
+		runtime._color_panel = nil
+		runtime._color_backdrop = nil
+
+		if on_close then
+			_pcall(on_close)
+		end
+	end
+
+	backdrop.MouseButton1Click:Connect(close)
+
+	runtime._color_panel = panel
+	runtime._color_backdrop = backdrop
+
+	apply(false)
+
+	return panel
+end
+
 local open_settings_panel
 
 local function create_switch(parent, order, values, runtime)
@@ -1855,9 +2207,22 @@ local function create_switch(parent, order, values, runtime)
 		chip_width = _max(18, measured + 12)
 	end
 
+	local color_present = values.colorpicker ~= nil and values.colorpicker ~= false
+	local color_flag = nil
+
+	if color_present then
+		if _type(values.colorpicker) == 'string' then
+			color_flag = values.colorpicker
+		elseif values.flag then
+			color_flag = `{values.flag}_color`
+		end
+	end
+
 	local icon_count = (values.notify and 1 or 0) + (values.settings and 1 or 0)
-	local icon_right = key and -(36 + chip_width + 6) or -36
-	local label_edge = icon_count > 0 and (icon_right - 18 * icon_count) or (key and -(36 + chip_width) or -36)
+	local color_offset = -36
+	local key_offset = color_present and (color_offset - 22) or color_offset
+	local icon_right = key and (key_offset - chip_width - 6) or (color_present and (color_offset - 22) or color_offset)
+	local label_edge = icon_count > 0 and (icon_right - 20 * icon_count) or (key and (key_offset - chip_width) or icon_right)
 
 	local label = create_label({
 		Size = _new_udim2(1, label_edge - 6, 1, 0),
@@ -1900,7 +2265,7 @@ local function create_switch(parent, order, values, runtime)
 	if key then
 		chip = create_new('TextButton', {
 			AnchorPoint = _new_vector2(1, 0.5),
-			Position = _new_udim2(1, -36, 0.5, 0),
+			Position = _new_udim2(1, key_offset, 0.5, 0),
 			Size = _new_udim2(0, chip_width, 0, 18),
 			FontFace = FONT,
 			Text = key.Name,
@@ -1918,6 +2283,32 @@ local function create_switch(parent, order, values, runtime)
 		create_padding(chip, 0, 0, 5, 5)
 	end
 
+	local color_chip = nil
+	local color_stroke = nil
+
+	if color_present then
+		local initial = Color3.fromRGB(255, 255, 255)
+
+		if color_flag and _type(runtime._flags[color_flag]) == 'string' then
+			initial = from_hex(runtime._flags[color_flag]) or initial
+		end
+
+		color_chip = create_new('TextButton', {
+			AnchorPoint = _new_vector2(1, 0.5),
+			Position = _new_udim2(1, color_offset, 0.5, 0),
+			Size = _new_udim2(0, 18, 0, 18),
+			BackgroundColor3 = initial,
+			Text = '',
+			AutoButtonColor = false,
+			BorderSizePixel = 0,
+			ZIndex = 5,
+			Parent = row,
+		})
+
+		create_round(color_chip, 4)
+		color_stroke = create_outline(color_chip)
+	end
+
 	local notify_flag = values.flag and `{values.flag}_notify`
 	local notify_on = notify_flag ~= nil and runtime._flags[notify_flag] == true
 
@@ -1925,7 +2316,7 @@ local function create_switch(parent, order, values, runtime)
 		return create_new('TextButton', {
 			AnchorPoint = _new_vector2(1, 0.5),
 			Position = _new_udim2(1, offset, 0.5, 0),
-			Size = _new_udim2(0, 16, 0, 16),
+			Size = _new_udim2(0, 18, 0, 18),
 			BackgroundTransparency = 1,
 			Text = '',
 			AutoButtonColor = false,
@@ -1967,7 +2358,7 @@ local function create_switch(parent, order, values, runtime)
 
 	if values.notify then
 		bell = icon_button(icon_right)
-		paint_bell = build_icon(bell, 'bell', 14)
+		paint_bell = build_icon(bell, 'bell', 15)
 
 		if not paint_bell then
 			bell:Destroy()
@@ -1976,8 +2367,8 @@ local function create_switch(parent, order, values, runtime)
 	end
 
 	if values.settings then
-		gear = icon_button(icon_right - (values.notify and 18 or 0))
-		paint_gear = build_icon(gear, 'settings', 14)
+		gear = icon_button(icon_right - (values.notify and 20 or 0))
+		paint_gear = build_icon(gear, 'settings', 15)
 
 		if not paint_gear then
 			gear:Destroy()
@@ -1985,13 +2376,19 @@ local function create_switch(parent, order, values, runtime)
 		end
 	end
 
+	local gear_open = false
+
 	local function paint_icons(hovered)
 		if paint_bell then
 			paint_bell(notify_on and 'accent' or 'text_dim')
 		end
 
 		if paint_gear then
-			paint_gear(hovered and 'text' or 'text_dim')
+			if gear_open then
+				paint_gear('accent')
+			else
+				paint_gear(hovered and 'text' or 'text_dim')
+			end
 		end
 	end
 
@@ -2069,6 +2466,27 @@ local function create_switch(parent, order, values, runtime)
 		set_value(not state, true)
 	end)
 
+	if color_chip then
+		color_chip.MouseButton1Click:Connect(function()
+			paint(color_stroke, 'Color', 'accent')
+
+			open_color_popover(runtime, color_chip, color_chip.BackgroundColor3, function(next_color)
+				color_chip.BackgroundColor3 = next_color
+
+				if color_flag then
+					runtime._flags[color_flag] = to_hex(next_color)
+					library._save(runtime)
+				end
+
+				if values.color_callback then
+					_pcall(values.color_callback, next_color)
+				end
+			end, function()
+				paint(color_stroke, 'Color', 'stroke')
+			end)
+		end)
+	end
+
 	if bell then
 		bell.MouseButton1Click:Connect(function()
 			notify_on = not notify_on
@@ -2138,7 +2556,13 @@ local function create_switch(parent, order, values, runtime)
 				end,
 			})
 
-			open_settings_panel(runtime, gear, entries, values.title)
+			gear_open = true
+			paint_icons(false)
+
+			open_settings_panel(runtime, gear, entries, values.title, function()
+				gear_open = false
+				paint_icons(false)
+			end)
 		end)
 	end
 	if chip then
@@ -3117,7 +3541,7 @@ local function create_keybind(parent, order, values, runtime)
 	}
 end
 
-open_settings_panel = function(runtime, anchor, entries, title)
+open_settings_panel = function(runtime, anchor, entries, title, on_close)
 	if runtime._settings_panel then
 		runtime._settings_panel:Destroy()
 		runtime._settings_panel = nil
@@ -3233,6 +3657,10 @@ open_settings_panel = function(runtime, anchor, entries, title)
 
 		runtime._settings_panel = nil
 		runtime._settings_backdrop = nil
+
+		if on_close then
+			_pcall(on_close)
+		end
 	end
 
 	backdrop.MouseButton1Click:Connect(close)
