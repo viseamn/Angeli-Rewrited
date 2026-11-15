@@ -1754,18 +1754,27 @@ function library:refresh_keybinds()
 	for _, entry in self._keybind_entries do
 		if entry.key_name and entry.key_name ~= '' then
 			any = true
-			local row = create_new('Frame', {
-				BackgroundTransparency = 1,
+
+			local enabled = self._flags[entry.flag] == true
+			local row = create_new('TextButton', {
+				BackgroundTransparency = enabled and 0.85 or 1,
 				Size = _new_udim2(1, 0, 0, 24),
+				Text = '',
+				AutoButtonColor = false,
+				BorderSizePixel = 0,
 				Parent = self._keybind_content,
 			})
 
-			local role = self._flags[entry.flag] and 'text' or 'text_dim'
+			paint(row, 'BackgroundColor3', 'accent')
+			create_round(row, 4)
+
+			local role = enabled and 'accent' or 'text_dim'
 
 			create_label({
-				Size = _new_udim2(1, -70, 1, 0),
+				Position = _new_udim2(0, 6, 0, 0),
+				Size = _new_udim2(1, -76, 1, 0),
 				Text = entry.title,
-				TextRole = role,
+				TextRole = enabled and 'text' or 'text_dim',
 				TextSize = 14,
 				TextXAlignment = Enum.TextXAlignment.Left,
 				TextTruncate = Enum.TextTruncate.AtEnd,
@@ -1774,7 +1783,7 @@ function library:refresh_keybinds()
 
 			create_label({
 				AnchorPoint = _new_vector2(1, 0.5),
-				Position = _new_udim2(1, 0, 0.5, 0),
+				Position = _new_udim2(1, -6, 0.5, 0),
 				Size = _new_udim2(0, 66, 0, 18),
 				Text = `[ {entry.key_name} ]`,
 				TextRole = role,
@@ -1782,6 +1791,37 @@ function library:refresh_keybinds()
 				TextXAlignment = Enum.TextXAlignment.Right,
 				Parent = row,
 			})
+
+			local marker = create_new('Frame', {
+				AnchorPoint = _new_vector2(0, 0.5),
+				Position = _new_udim2(0, 0, 0.5, 0),
+				Size = _new_udim2(0, 2, 0, 12),
+				BackgroundTransparency = enabled and 0 or 1,
+				BorderSizePixel = 0,
+				Parent = row,
+			})
+
+			paint(marker, 'BackgroundColor3', 'accent')
+			create_pill(marker)
+
+			row.MouseEnter:Connect(function()
+				if not enabled then
+					row.BackgroundTransparency = 0.93
+				end
+			end)
+
+			row.MouseLeave:Connect(function()
+				row.BackgroundTransparency = enabled and 0.85 or 1
+			end)
+
+			row.MouseButton1Click:Connect(function()
+				for _, control in self._controls do
+					if control.flag == entry.flag then
+						control.sync(not (self._flags[entry.flag] == true))
+						break
+					end
+				end
+			end)
 		end
 	end
 
@@ -1917,6 +1957,7 @@ local function open_color_popover(runtime, anchor, initial, on_change, on_close)
 	})
 
 	create_round(sv, 6)
+	create_outline(sv)
 
 	local white_layer = create_new('Frame', {
 		Size = _new_udim2(1, 0, 1, 0),
@@ -1974,7 +2015,7 @@ local function open_color_popover(runtime, anchor, initial, on_change, on_close)
 
 	local hue_bar = create_new('Frame', {
 		LayoutOrder = 1,
-		Size = _new_udim2(1, 0, 0, 10),
+		Size = _new_udim2(1, 0, 0, 12),
 		BorderSizePixel = 0,
 		ClipsDescendants = true,
 		ZIndex = 501,
@@ -1982,6 +2023,7 @@ local function open_color_popover(runtime, anchor, initial, on_change, on_close)
 	})
 
 	create_pill(hue_bar)
+	create_outline(hue_bar)
 
 	local hue_fill = create_new('Frame', {
 		Size = _new_udim2(1, 0, 1, 0),
@@ -2008,7 +2050,7 @@ local function open_color_popover(runtime, anchor, initial, on_change, on_close)
 	local hue_marker = create_new('Frame', {
 		AnchorPoint = _new_vector2(0.5, 0.5),
 		Position = _new_udim2(h, 0, 0.5, 0),
-		Size = _new_udim2(0, 4, 0, 14),
+		Size = _new_udim2(0, 4, 0, 16),
 		BorderSizePixel = 0,
 		ZIndex = 503,
 		Parent = hue_bar,
@@ -2431,6 +2473,10 @@ local function create_switch(parent, order, values, runtime)
 			if not ok then
 				warn(`[Angeli] toggle callback failed: {_tostring(err)}`)
 			end
+		end
+
+		if values.keybind_list ~= false then
+			library.refresh_keybinds(runtime)
 		end
 
 		if notify_on and not quiet then
@@ -3067,7 +3113,10 @@ local function create_dropdown(parent, order, values, runtime)
 				visible += 1
 			end
 		end
-		return _min(visible * ROW_HEIGHT, 5 * ROW_HEIGHT)
+
+		local pad = compact and 8 or 0
+
+		return _min(visible * ROW_HEIGHT, 5 * ROW_HEIGHT) + pad
 	end
 
 	local function commit(value, silent, quiet)
@@ -3233,6 +3282,7 @@ local function create_dropdown(parent, order, values, runtime)
 		end
 
 		dropdown._open = target
+		list.ScrollingEnabled = #options * ROW_HEIGHT > 5 * ROW_HEIGHT
 
 		_create_tween(tween_service, list, _new_tween_info(0.35, Enum.EasingStyle.Quint), {
 			Size = _new_udim2(1, 0, 0, target and list_height() or 0),
