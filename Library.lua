@@ -1876,7 +1876,7 @@ local function open_color_popover(runtime, anchor, initial, on_change, on_close)
 	create_round(backdrop, 8)
 
 	_create_tween(tween_service, backdrop, _new_tween_info(0.18), {
-		BackgroundTransparency = 0.5,
+		BackgroundTransparency = 0.32,
 	}):Play()
 
 	local panel = create_new('Frame', {
@@ -2220,7 +2220,7 @@ local function create_switch(parent, order, values, runtime)
 
 	local icon_count = (values.notify and 1 or 0) + (values.settings and 1 or 0)
 	local color_offset = -36
-	local key_offset = color_present and (color_offset - 22) or color_offset
+	local key_offset = color_present and (color_offset - 24) or color_offset
 	local icon_right = key and (key_offset - chip_width - 6) or (color_present and (color_offset - 22) or color_offset)
 	local label_edge = icon_count > 0 and (icon_right - 20 * icon_count) or (key and (key_offset - chip_width) or icon_right)
 
@@ -2366,6 +2366,8 @@ local function create_switch(parent, order, values, runtime)
 		end
 	end
 
+	local gear_pill = nil
+
 	if values.settings then
 		gear = icon_button(icon_right - (values.notify and 20 or 0))
 		paint_gear = build_icon(gear, 'settings', 15)
@@ -2373,6 +2375,18 @@ local function create_switch(parent, order, values, runtime)
 		if not paint_gear then
 			gear:Destroy()
 			gear = nil
+		else
+			gear_pill = create_new('Frame', {
+				Position = _new_udim2(0, -3, 0, -3),
+				Size = _new_udim2(1, 6, 1, 6),
+				BackgroundTransparency = 1,
+				BorderSizePixel = 0,
+				ZIndex = 5,
+				Parent = gear,
+			})
+
+			create_round(gear_pill, 6)
+			paint(gear_pill, 'BackgroundColor3', 'accent')
 		end
 	end
 
@@ -2389,6 +2403,10 @@ local function create_switch(parent, order, values, runtime)
 			else
 				paint_gear(hovered and 'text' or 'text_dim')
 			end
+		end
+
+		if gear_pill then
+			gear_pill.BackgroundTransparency = gear_open and 0.82 or 1
 		end
 	end
 
@@ -3593,7 +3611,7 @@ open_settings_panel = function(runtime, anchor, entries, title, on_close)
 	create_round(backdrop, 8)
 
 	_create_tween(tween_service, backdrop, _new_tween_info(0.18), {
-		BackgroundTransparency = 0.5,
+		BackgroundTransparency = 0.32,
 	}):Play()
 
 	local panel = create_new('Frame', {
