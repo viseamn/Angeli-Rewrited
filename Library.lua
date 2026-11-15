@@ -337,8 +337,17 @@ function library:_save()
 		save_manager._dirty = true
 		return
 	end
+
+	local runtime = self
+	local now = os.clock()
+
+	if runtime._save_at and now - runtime._save_at < 0.25 then
+		return
+	end
+
+	runtime._save_at = now
 	save_manager.save(save_manager._active, true)
-	self:pulse_saved()
+	runtime:pulse_saved()
 end
 
 function library:_bind(flag, sync)
@@ -404,8 +413,8 @@ library._new = function(runtime_type, options)
 		_keybind_visible = false,
 		_is_mobile = is_mobile,
 		_ui_scale = 1,
-		_label_size = is_mobile and 15 or 14,
-		_small_size = is_mobile and 11 or 10,
+		_label_size = is_mobile and 14 or 13,
+		_small_size = is_mobile and 10 or 9,
 		_ui_open = true,
 		_dragging = false,
 		_title = (_type(options) == 'table' and _type(options.title) == 'string' and trim(options.title) ~= '')
@@ -1680,7 +1689,7 @@ function library:_init_keybinds()
 		Size = _new_udim2(1, 0, 1, 0),
 		Text = 'Keybinds',
 		TextRole = 'text',
-		TextSize = 14,
+		TextSize = self._label_size,
 		TextXAlignment = Enum.TextXAlignment.Center,
 		Parent = header,
 	})
@@ -1781,7 +1790,7 @@ function library:refresh_keybinds()
 				Size = _new_udim2(1, -76, 1, 0),
 				Text = entry.title,
 				TextRole = enabled and 'text' or 'text_dim',
-				TextSize = 14,
+				TextSize = self._label_size,
 				TextXAlignment = Enum.TextXAlignment.Left,
 				TextTruncate = Enum.TextTruncate.AtEnd,
 				Parent = row,
@@ -1793,7 +1802,7 @@ function library:refresh_keybinds()
 				Size = _new_udim2(0, 66, 0, 18),
 				Text = `[ {entry.key_name} ]`,
 				TextRole = role,
-				TextSize = 14,
+				TextSize = self._label_size,
 				TextXAlignment = Enum.TextXAlignment.Right,
 				Parent = row,
 			})
@@ -2260,6 +2269,222 @@ end
 
 local open_settings_panel
 
+local function open_keybind_popover(runtime, anchor, current_key, current_mode, on_change)
+	if runtime._keybind_panel then
+		runtime._keybind_panel:Destroy()
+		runtime._keybind_panel = nil
+	end
+
+	if runtime._keybind_backdrop then
+		runtime._keybind_backdrop:Destroy()
+		runtime._keybind_backdrop = nil
+	end
+
+	local width = 152
+	local scale = runtime._ui_scale
+	local container = runtime._container
+	local container_pos = container.AbsolutePosition
+	local origin = anchor.AbsolutePosition
+	local anchor_size = anchor.AbsoluteSize
+	local anchor_x = (origin.X - container_pos.X) / scale
+	local anchor_y = (origin.Y - container_pos.Y + anchor_size.Y) / scale + 4
+	local x = _clamp(anchor_x, SIDEBAR_WIDTH + 10, WINDOW_WIDTH - width - 10)
+	local y = _clamp(anchor_y, 8, _max(8, WINDOW_HEIGHT - 120))
+
+	local backdrop = create_new('TextButton', {
+		BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+		BackgroundTransparency = 1,
+		Size = _new_udim2(1, 0, 1, 0),
+		Text = '',
+		AutoButtonColor = false,
+		BorderSizePixel = 0,
+		ZIndex = 498,
+		Parent = container,
+	})
+
+	create_round(backdrop, 8)
+
+	_create_tween(tween_service, backdrop, _new_tween_info(0.18), {
+		BackgroundTransparency = 0.32,
+	}):Play()
+
+	local panel = create_new('Frame', {
+		Position = _new_udim2(0, x, 0, y + 4),
+		Size = _new_udim2(0, width, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		BorderSizePixel = 0,
+		ZIndex = 500,
+		Parent = container,
+	})
+
+	paint(panel, 'BackgroundColor3', 'surface')
+	create_round(panel, 10)
+	create_outline(panel)
+	create_padding(panel, 8, 8, 8, 8)
+	create_list(panel, 6)
+
+	local pop = create_new('UIScale', {
+		Scale = 0.94,
+		Parent = panel,
+	})
+
+	_create_tween(tween_service, pop, _new_tween_info(0.2, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+		Scale = 1,
+	}):Play()
+
+	_create_tween(tween_service, panel, _new_tween_info(0.2, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+		Position = _new_udim2(0, x, 0, y),
+	}):Play()
+
+	local modes = { 'Toggle', 'Hold', 'Press' }
+	local mode = current_mode or 'Toggle'
+	local key = current_key
+	local picking = false
+
+	local segment = create_new('Frame', {
+		LayoutOrder = 0,
+		BackgroundTransparency = 1,
+		Size = _new_udim2(1, 0, 0, 26),
+		Parent = panel,
+	})
+
+	create_new('UIListLayout', {
+		FillDirection = Enum.FillDirection.Horizontal,
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Padding = _new_udim(0, 4),
+		Parent = segment,
+	})
+
+	local buttons = {}
+
+	local function paint_modes()
+		for name, button in _pairs(buttons) do
+			local active = name == mode
+			button.BackgroundTransparency = active and 0 or 1
+			paint(button, 'TextColor3', active and 'text' or 'text_dim')
+		end
+	end
+
+	for index, name in modes do
+		local button = create_new('TextButton', {
+			LayoutOrder = index,
+			Size = _new_udim2(1 / 3, -3, 1, 0),
+			FontFace = FONT,
+			Text = name,
+			TextSize = runtime._small_size + 1,
+			AutoButtonColor = false,
+			BorderSizePixel = 0,
+			ZIndex = 501,
+			Parent = segment,
+		})
+
+		paint(button, 'BackgroundColor3', 'surface_alt')
+		create_round(button, 5)
+
+		button.MouseButton1Click:Connect(function()
+			mode = name
+			paint_modes()
+
+			if on_change then
+				_pcall(on_change, key, mode)
+			end
+		end)
+
+		buttons[name] = button
+	end
+
+	paint_modes()
+
+	local key_button = create_new('TextButton', {
+		LayoutOrder = 1,
+		Size = _new_udim2(1, 0, 0, 30),
+		FontFace = FONT,
+		Text = key and key.Name or 'None',
+		TextSize = runtime._label_size,
+		AutoButtonColor = false,
+		BorderSizePixel = 0,
+		ZIndex = 501,
+		Parent = panel,
+	})
+
+	paint(key_button, 'BackgroundColor3', 'surface_alt')
+	paint(key_button, 'TextColor3', 'text')
+	create_round(key_button, 6)
+
+	local key_stroke = create_outline(key_button)
+
+	local function stop_picking()
+		picking = false
+		key_button.Text = key and key.Name or 'None'
+		paint(key_stroke, 'Color', 'stroke')
+	end
+
+	key_button.MouseButton1Click:Connect(function()
+		picking = true
+		key_button.Text = '...'
+		paint(key_stroke, 'Color', 'accent')
+	end)
+
+	watch(user_input_service.InputBegan, function(input)
+		if not picking or not panel.Parent then
+			return
+		end
+
+		if input.UserInputType ~= Enum.UserInputType.Keyboard then
+			return
+		end
+
+		key = input.KeyCode
+		stop_picking()
+
+		if on_change then
+			_pcall(on_change, key, mode)
+		end
+	end)
+
+	local closing = false
+
+	local function close()
+		if closing then
+			return
+		end
+
+		closing = true
+
+		_create_tween(tween_service, pop, _new_tween_info(0.14, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
+			Scale = 0.95,
+		}):Play()
+
+		_create_tween(tween_service, panel, _new_tween_info(0.14, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
+			Position = _new_udim2(0, x, 0, y + 4),
+		}):Play()
+
+		_create_tween(tween_service, backdrop, _new_tween_info(0.14), {
+			BackgroundTransparency = 1,
+		}):Play()
+
+		_delay(0.16, function()
+			if panel.Parent then
+				panel:Destroy()
+			end
+
+			if backdrop.Parent then
+				backdrop:Destroy()
+			end
+		end)
+
+		runtime._keybind_panel = nil
+		runtime._keybind_backdrop = nil
+	end
+
+	backdrop.MouseButton1Click:Connect(close)
+
+	runtime._keybind_panel = panel
+	runtime._keybind_backdrop = backdrop
+
+	return panel
+end
+
 local function create_switch(parent, order, values, runtime)
 	local state = values.default == true
 	local key_flag = values.keybind_flag or (values.flag and `{values.flag}_key`)
@@ -2344,7 +2569,6 @@ local function create_switch(parent, order, values, runtime)
 	create_pill(knob)
 
 	local chip = nil
-	local picking = false
 	local holding = false
 	local mode = values.keybind_mode or 'Toggle'
 
@@ -2620,18 +2844,6 @@ local function create_switch(parent, order, values, runtime)
 				})
 			end
 
-			if key then
-				_insert(entries, {
-					type = 'dropdown',
-					title = 'Mode',
-					options = { 'Toggle', 'Hold', 'Press' },
-					value = mode,
-					callback = function(value)
-						mode = value
-					end,
-				})
-			end
-
 			if _type(values.settings) == 'table' then
 				for _, entry in values.settings do
 					_insert(entries, entry)
@@ -2657,8 +2869,13 @@ local function create_switch(parent, order, values, runtime)
 	end
 	if chip then
 		chip.MouseButton1Click:Connect(function()
-			picking = true
-			chip.Text = '...'
+			open_keybind_popover(runtime, chip, key, mode, function(next_key, next_mode)
+				mode = next_mode
+
+				if next_key then
+					set_key(next_key)
+				end
+			end)
 		end)
 
 		chip.MouseButton2Click:Connect(function()
@@ -2711,14 +2928,6 @@ local function create_switch(parent, order, values, runtime)
 		end)
 
 		watch(user_input_service.InputBegan, function(input, processed)
-			if picking then
-				if input.UserInputType == Enum.UserInputType.Keyboard then
-					picking = false
-					set_key(input.KeyCode)
-				end
-				return
-			end
-
 			if processed or not key or input.KeyCode ~= key then
 				return
 			end
@@ -4393,6 +4602,14 @@ local function new_groupbox(tab, title, side)
 		values = values or {}
 		values.title = values.Text or values.title or id
 
+		if values.Notify ~= nil then
+			values.notify = values.Notify
+		end
+
+		if values.Settings ~= nil then
+			values.settings = values.Settings
+		end
+
 		local record = push('toggle', id, values)
 
 		if id then
@@ -4651,35 +4868,31 @@ function library:CreateWindow(settings)
 
 	_insert(windows, ui)
 
+	local function wrap_tab(tab)
+		tab.AddLeftGroupbox = function(_, title)
+			return new_groupbox(tab, title, 'left')
+		end
+
+		tab.AddRightGroupbox = function(_, title)
+			return new_groupbox(tab, title, 'right')
+		end
+
+		return tab
+	end
+
 	function window:AddTab(name, icon)
 		if _type(icon) == 'string' and not string.find(icon, 'rbxassetid', 1, true) then
 			icon = nil
 		end
 
-		local tab = ui:create_tab(name, icon)
-
-		return {
-			AddLeftGroupbox = function(_, title)
-				return new_groupbox(tab, title, 'left')
-			end,
-			AddRightGroupbox = function(_, title)
-				return new_groupbox(tab, title, 'right')
-			end,
-		}
+		return wrap_tab(ui:create_tab(name, icon))
 	end
 
 	function window:CreateSettingsTab()
 		local tab = ui:create_tab('Settings', 'rbxassetid://10734941499')
 		ui:build_settings(tab)
 
-		return {
-			AddLeftGroupbox = function(_, title)
-				return new_groupbox(tab, title, 'left')
-			end,
-			AddRightGroupbox = function(_, title)
-				return new_groupbox(tab, title, 'right')
-			end,
-		}
+		return wrap_tab(tab)
 	end
 
 	function window:Notify(options)
