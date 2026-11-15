@@ -1744,7 +1744,7 @@ function library:refresh_keybinds()
 	end
 
 	for _, child in self._keybind_content:GetChildren() do
-		if child:IsA('Frame') then
+		if not child:IsA('UIPadding') and not child:IsA('UIListLayout') then
 			child:Destroy()
 		end
 	end
@@ -1756,11 +1756,9 @@ function library:refresh_keybinds()
 			any = true
 
 			local enabled = self._flags[entry.flag] == true
-			local row = create_new('TextButton', {
+			local row = create_new('Frame', {
 				BackgroundTransparency = enabled and 0.85 or 1,
 				Size = _new_udim2(1, 0, 0, 24),
-				Text = '',
-				AutoButtonColor = false,
 				BorderSizePixel = 0,
 				Parent = self._keybind_content,
 			})
@@ -1804,24 +1802,7 @@ function library:refresh_keybinds()
 			paint(marker, 'BackgroundColor3', 'accent')
 			create_pill(marker)
 
-			row.MouseEnter:Connect(function()
-				if not enabled then
-					row.BackgroundTransparency = 0.93
-				end
-			end)
 
-			row.MouseLeave:Connect(function()
-				row.BackgroundTransparency = enabled and 0.85 or 1
-			end)
-
-			row.MouseButton1Click:Connect(function()
-				for _, control in self._controls do
-					if control.flag == entry.flag then
-						control.sync(not (self._flags[entry.flag] == true))
-						break
-					end
-				end
-			end)
 		end
 	end
 
@@ -1834,11 +1815,21 @@ function library:set_keybind_visible(state)
 end
 
 function library:register_keybind(flag, title, key_name)
+	for _, entry in self._keybind_entries do
+		if entry.flag == flag then
+			entry.title = title
+			entry.key_name = key_name
+			self:refresh_keybinds()
+			return
+		end
+	end
+
 	_insert(self._keybind_entries, {
 		flag = flag,
 		title = title,
 		key_name = key_name,
 	})
+
 	self:refresh_keybinds()
 end
 
