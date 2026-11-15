@@ -3084,11 +3084,6 @@ open_settings_panel = function(runtime, anchor, entries, title)
 		runtime._settings_panel = nil
 	end
 
-	if runtime._settings_shadow then
-		runtime._settings_shadow:Destroy()
-		runtime._settings_shadow = nil
-	end
-
 	if runtime._settings_backdrop then
 		runtime._settings_backdrop:Destroy()
 		runtime._settings_backdrop = nil
@@ -3099,12 +3094,10 @@ open_settings_panel = function(runtime, anchor, entries, title)
 	local container = runtime._container
 	local container_pos = container.AbsolutePosition
 	local origin = anchor.AbsolutePosition
-	local size = anchor.AbsoluteSize
 	local anchor_x = (origin.X - container_pos.X) / scale
 	local anchor_y = (origin.Y - container_pos.Y) / scale
-	local right = _clamp(anchor_x + size.X / scale, SIDEBAR_WIDTH + 10 + width, WINDOW_WIDTH - 10)
-	local x = right - width
-	local y = anchor_y + size.Y / scale + 4
+	local x = _clamp(anchor_x, SIDEBAR_WIDTH + 10, WINDOW_WIDTH - width - 10)
+	local y = _clamp(anchor_y, 8, WINDOW_HEIGHT - 60)
 
 	local backdrop = create_new('TextButton', {
 		BackgroundColor3 = Color3.fromRGB(0, 0, 0),
@@ -3121,22 +3114,8 @@ open_settings_panel = function(runtime, anchor, entries, title)
 		BackgroundTransparency = 0.5,
 	}):Play()
 
-	local shadow = create_new('Frame', {
-		Position = _new_udim2(0, x, 0, y + 6),
-		Size = _new_udim2(0, width, 0, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
-		BackgroundColor3 = Color3.fromRGB(0, 0, 0),
-		BackgroundTransparency = 0.6,
-		BorderSizePixel = 0,
-		ZIndex = 499,
-		Parent = container,
-	})
-
-	create_round(shadow, 12)
-
 	local panel = create_new('Frame', {
-		AnchorPoint = _new_vector2(1, 0),
-		Position = _new_udim2(0, right, 0, y + 4),
+		Position = _new_udim2(0, x, 0, y + 4),
 		Size = _new_udim2(0, width, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		BorderSizePixel = 0,
@@ -3160,30 +3139,8 @@ open_settings_panel = function(runtime, anchor, entries, title)
 	}):Play()
 
 	_create_tween(tween_service, panel, _new_tween_info(0.2, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
-		Position = _new_udim2(0, right, 0, y),
+		Position = _new_udim2(0, x, 0, y),
 	}):Play()
-
-	create_label({
-		LayoutOrder = 0,
-		Size = _new_udim2(1, 0, 0, 12),
-		Text = string.upper(_tostring(title or 'Settings')),
-		TextRole = 'text_dim',
-		TextSize = runtime._small_size - 1,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		TextTruncate = Enum.TextTruncate.AtEnd,
-		ZIndex = 501,
-		Parent = panel,
-	})
-
-	local divider = create_new('Frame', {
-		LayoutOrder = 1,
-		Size = _new_udim2(1, 0, 0, 1),
-		BorderSizePixel = 0,
-		ZIndex = 501,
-		Parent = panel,
-	})
-
-	theme.paint(divider, 'BackgroundColor3', 'stroke')
 
 	local closing = false
 
@@ -3199,11 +3156,7 @@ open_settings_panel = function(runtime, anchor, entries, title)
 		}):Play()
 
 		_create_tween(tween_service, panel, _new_tween_info(0.14, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
-			Position = _new_udim2(0, right, 0, y + 4),
-		}):Play()
-
-		_create_tween(tween_service, shadow, _new_tween_info(0.14), {
-			BackgroundTransparency = 1,
+			Position = _new_udim2(0, x, 0, y + 4),
 		}):Play()
 
 		_create_tween(tween_service, backdrop, _new_tween_info(0.14), {
@@ -3215,24 +3168,18 @@ open_settings_panel = function(runtime, anchor, entries, title)
 				panel:Destroy()
 			end
 
-			if shadow.Parent then
-				shadow:Destroy()
-			end
-
 			if backdrop.Parent then
 				backdrop:Destroy()
 			end
 		end)
 
 		runtime._settings_panel = nil
-		runtime._settings_shadow = nil
 		runtime._settings_backdrop = nil
 	end
 
 	backdrop.MouseButton1Click:Connect(close)
 
 	runtime._settings_panel = panel
-	runtime._settings_shadow = shadow
 	runtime._settings_backdrop = backdrop
 
 	local builders = {
@@ -3243,7 +3190,7 @@ open_settings_panel = function(runtime, anchor, entries, title)
 		button = create_button,
 	}
 
-	local order = 2
+	local order = 1
 
 	for _, entry in entries do
 		local builder = builders[entry.type] or create_button
