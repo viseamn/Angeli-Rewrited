@@ -292,6 +292,8 @@ local function icon_asset(name)
 end
 
 library = {
+	Options = {},
+	Toggles = {},
 	_flags = {},
 	_controls = {},
 	_dropdowns = {},
@@ -381,7 +383,7 @@ local function resolve_runtime(self)
 	return library._current
 end
 
-library._new = function(runtime_type)
+library._new = function(runtime_type, options)
 	local is_mobile = user_input_service.TouchEnabled
 		or not (user_input_service.KeyboardEnabled and user_input_service.MouseEnabled)
 	local state = save_manager.state()
@@ -406,6 +408,9 @@ library._new = function(runtime_type)
 		_small_size = is_mobile and 11 or 10,
 		_ui_open = true,
 		_dragging = false,
+		_title = (_type(options) == 'table' and _type(options.title) == 'string' and trim(options.title) ~= '')
+			and trim(options.title)
+			or 'Angeli',
 	}, library)
 
 	library._current = self
@@ -565,15 +570,18 @@ function library:_init()
 		Parent = sidebar,
 	})
 
-	create_label({
+	local title_label = create_label({
 		Position = _new_udim2(0, 20, 0, 0),
 		Size = _new_udim2(1, -30, 1, 0),
-		Text = 'Angeli',
+		Text = self._title,
 		TextRole = 'text',
 		TextSize = self._is_mobile and 18 or 17,
 		TextXAlignment = Enum.TextXAlignment.Left,
+		TextTruncate = Enum.TextTruncate.AtEnd,
 		Parent = logo_area,
 	})
+
+	self._title_label = title_label
 
 	local saved_dot = create_new('Frame', {
 		AnchorPoint = _new_vector2(1, 0.5),
@@ -1809,6 +1817,37 @@ function library:refresh_keybinds()
 	self._keybind_frame.Visible = self._keybind_visible and any
 end
 
+function library:center()
+	local runtime = resolve_runtime(self)
+
+	if not runtime or not runtime._container then
+		return false
+	end
+
+	runtime._container.Position = _new_udim2(0.5, 0, 0.5, 0)
+
+	return true
+end
+
+function library:set_title(text)
+	local runtime = resolve_runtime(self)
+
+	if not runtime or not runtime._title_label then
+		return false
+	end
+
+	text = trim(_tostring(text or ''))
+
+	if text == '' then
+		return false
+	end
+
+	runtime._title = text
+	runtime._title_label.Text = text
+
+	return true
+end
+
 function library:set_keybind_visible(state)
 	self._keybind_visible = state == true
 	self:refresh_keybinds()
@@ -1870,6 +1909,12 @@ local function from_hex(text)
 end
 
 local function open_color_popover(runtime, anchor, initial, on_change, on_close)
+	if runtime._color_close then
+		local previous = runtime._color_close
+		runtime._color_close = nil
+		_pcall(previous)
+	end
+
 	if runtime._color_panel then
 		runtime._color_panel:Destroy()
 		runtime._color_panel = nil
@@ -2195,6 +2240,7 @@ local function open_color_popover(runtime, anchor, initial, on_change, on_close)
 
 		runtime._color_panel = nil
 		runtime._color_backdrop = nil
+		runtime._color_close = nil
 
 		if on_close then
 			_pcall(on_close)
@@ -2205,6 +2251,7 @@ local function open_color_popover(runtime, anchor, initial, on_change, on_close)
 
 	runtime._color_panel = panel
 	runtime._color_backdrop = backdrop
+	runtime._color_close = on_close
 
 	apply(false)
 
@@ -2326,7 +2373,7 @@ local function create_switch(parent, order, values, runtime)
 	local color_stroke = nil
 
 	if color_present then
-		local initial = Color3.fromRGB(255, 255, 255)
+		local initial = values.color_default or Color3.fromRGB(255, 255, 255)
 
 		if color_flag and _type(runtime._flags[color_flag]) == 'string' then
 			initial = from_hex(runtime._flags[color_flag]) or initial
@@ -3356,6 +3403,7 @@ end
 
 local function create_button(parent, order, values, runtime)
 	local primary = values.primary == true
+	local disabled = values.disabled == true or values.Disabled == true
 	local base_role = primary and 'accent' or 'surface_alt'
 
 	local button = create_new('TextButton', {
@@ -3373,10 +3421,20 @@ local function create_button(parent, order, values, runtime)
 	})
 
 	paint(button, 'BackgroundColor3', base_role)
-	paint(button, 'TextColor3', primary and 'accent_text' or 'text')
+	paint(button, 'TextColor3', disabled and 'text_dim' or (primary and 'accent_text' or 'text'))
 	create_round(button, 6)
 
+	if disabled then
+		button.Active = false
+		button.Selectable = false
+		button.AutoButtonColor = false
+	end
+
 	button.MouseButton1Click:Connect(function()
+		if disabled then
+			return
+		end
+
 		button.BackgroundColor3 = theme.color('stroke')
 		_create_tween(tween_service, button, _new_tween_info(0.2), {
 			BackgroundColor3 = theme.color(base_role),
@@ -3589,6 +3647,12 @@ local function create_keybind(parent, order, values, runtime)
 end
 
 open_settings_panel = function(runtime, anchor, entries, title, on_close)
+	if runtime._settings_close then
+		local previous = runtime._settings_close
+		runtime._settings_close = nil
+		_pcall(previous)
+	end
+
 	if runtime._settings_panel then
 		runtime._settings_panel:Destroy()
 		runtime._settings_panel = nil
@@ -3704,6 +3768,7 @@ open_settings_panel = function(runtime, anchor, entries, title, on_close)
 
 		runtime._settings_panel = nil
 		runtime._settings_backdrop = nil
+		runtime._settings_close = nil
 
 		if on_close then
 			_pcall(on_close)
@@ -3714,6 +3779,7 @@ open_settings_panel = function(runtime, anchor, entries, title, on_close)
 
 	runtime._settings_panel = panel
 	runtime._settings_backdrop = backdrop
+	runtime._settings_close = on_close
 
 	local builders = {
 		switch = create_switch,
@@ -4056,6 +4122,595 @@ end
 function library:import_profile(text, name)
 	text, name = call_args(self, text, name)
 	return save_manager.import(text, name)
+end
+
+local function create_color_row(parent, order, values, runtime)
+	local flag = values.flag
+	local color = values.default or Color3.fromRGB(255, 255, 255)
+
+	if flag and _type(runtime._flags[flag]) == 'string' then
+		color = from_hex(runtime._flags[flag]) or color
+	end
+
+	local row = create_new('Frame', {
+		BackgroundTransparency = 1,
+		LayoutOrder = order,
+		Size = _new_udim2(1, 0, 0, 26),
+		Parent = parent,
+	})
+
+	create_label({
+		Size = _new_udim2(1, -30, 1, 0),
+		Text = values.title or 'Color',
+		TextSize = runtime._label_size,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		Parent = row,
+	})
+
+	local chip = create_new('TextButton', {
+		AnchorPoint = _new_vector2(1, 0.5),
+		Position = _new_udim2(1, 0, 0.5, 0),
+		Size = _new_udim2(0, 18, 0, 18),
+		BackgroundColor3 = color,
+		Text = '',
+		AutoButtonColor = false,
+		BorderSizePixel = 0,
+		Parent = row,
+	})
+
+	create_round(chip, 4)
+	local stroke = create_outline(chip)
+
+	local function commit(next_color)
+		color = next_color
+		chip.BackgroundColor3 = next_color
+
+		if flag then
+			runtime._flags[flag] = to_hex(next_color)
+			library._save(runtime)
+		end
+
+		if values.callback then
+			_pcall(values.callback, next_color)
+		end
+	end
+
+	chip.MouseButton1Click:Connect(function()
+		paint(stroke, 'Color', 'accent')
+
+		open_color_popover(runtime, chip, color, commit, function()
+			paint(stroke, 'Color', 'stroke')
+		end)
+	end)
+
+	return {
+		get = function()
+			return color
+		end,
+		set = function(next_color)
+			commit(next_color)
+		end,
+	}
+end
+
+function group_methods:create_colorpicker(flag, values)
+	if _type(flag) == 'table' then
+		values = flag
+		flag = values.flag
+	end
+
+	values = values or {}
+	values.flag = flag
+
+	return create_color_row(self._frame, self:_next_order(), values, self._runtime)
+end
+
+local toggles = library.Toggles
+local options = library.Options
+
+local function build_control(kind, parent, order, values, runtime)
+	if kind == 'divider' then
+		local holder = create_new('Frame', {
+			BackgroundTransparency = 1,
+			LayoutOrder = order,
+			Size = _new_udim2(1, 0, 0, 9),
+			Parent = parent,
+		})
+
+		create_divider(holder, _new_udim2(0, 0, 0.5, 0), _new_udim2(1, 0, 0, 1))
+
+		return nil
+	end
+
+	if kind == 'label' then
+		create_label({
+			LayoutOrder = order,
+			Size = _new_udim2(1, 0, 0, 18),
+			Text = values.title or '',
+			TextSize = runtime._label_size,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextTruncate = Enum.TextTruncate.AtEnd,
+			Parent = parent,
+		})
+
+		return nil
+	end
+
+	if kind == 'color' then
+		return create_color_row(parent, order, values, runtime)
+	end
+
+	if kind == 'button' then
+		return create_button(parent, order, values, runtime)
+	end
+
+	if kind == 'slider' then
+		return create_slider(parent, order, values, runtime)
+	end
+
+	if kind == 'input' then
+		return create_textbox(parent, order, values, runtime)
+	end
+
+	if kind == 'dropdown' then
+		return create_dropdown(parent, order, values, runtime)
+	end
+
+	if kind == 'keybind' then
+		return create_keybind(parent, order, values, runtime)
+	end
+
+	return create_switch(parent, order, values, runtime)
+end
+
+local function read_value(control, kind)
+	if not control then
+		return nil
+	end
+
+	if kind == 'dropdown' and control.get_value then
+		return control.get_value()
+	end
+
+	if control.get then
+		return control.get()
+	end
+
+	return nil
+end
+
+local function write_value(control, kind, value)
+	if not control then
+		return false
+	end
+
+	if kind == 'dropdown' and control.set_value then
+		control:set_value(value, false, false)
+		return true
+	end
+
+	if control.set then
+		control.set(value)
+		return true
+	end
+
+	return false
+end
+
+local function new_record(id, kind, values)
+	local record = {
+		id = id,
+		kind = kind,
+		values = values,
+		handlers = {},
+		queued = nil,
+		control = nil,
+	}
+
+	local proxy = {}
+	local methods = {}
+
+	function methods:OnChanged(callback)
+		_insert(record.handlers, callback)
+		return proxy
+	end
+
+	function methods:SetValue(value)
+		if record.control then
+			write_value(record.control, record.kind, value)
+		else
+			record.queued = value
+		end
+
+		return proxy
+	end
+
+	function methods:AddKeyPicker(_, id, options)
+		if _type(id) == 'table' then
+			options = id
+		end
+
+		options = options or {}
+		record.values.keybind = resolve_key(options.Default or options.Key or Enum.KeyCode.F) or Enum.KeyCode.F
+		record.values.keybind_mode = options.Mode or 'Toggle'
+
+		return proxy
+	end
+
+	function methods:AddColorPicker(options)
+		options = options or {}
+		record.values.colorpicker = true
+		record.values.color_default = options.Default or Color3.fromRGB(255, 255, 255)
+
+		return proxy
+	end
+
+	setmetatable(proxy, {
+		__index = function(_, key)
+			if key == 'Value' then
+				if record.control then
+					return read_value(record.control, record.kind)
+				end
+
+				return record.queued
+			end
+
+			return methods[key]
+		end,
+	})
+
+	record.proxy = proxy
+
+	return record
+end
+
+local function new_groupbox(tab, title, side)
+	local group = tab:create_group(title, side)
+	local queue = {}
+	local order = 0
+
+	local box = { _group = group, _queue = queue }
+
+	local function push(kind, id, values)
+		if values.Default ~= nil and values.default == nil then
+			values.default = values.Default
+		end
+
+		order += 1
+		_insert(queue, {
+			kind = kind,
+			id = id,
+			values = values,
+			order = order,
+			record = id and new_record(id, kind, values) or nil,
+		})
+
+		return queue[#queue].record
+	end
+
+	function box:AddToggle(id, values)
+		values = values or {}
+		values.title = values.Text or values.title or id
+
+		local record = push('toggle', id, values)
+
+		if id then
+			toggles[id] = record.proxy
+			options[id] = record.proxy
+		end
+
+		return record.proxy
+	end
+
+	function box:AddCheckbox(id, values)
+		values = values or {}
+		values.title = values.Text or values.title or id
+
+		local record = push('checkbox', id, values)
+
+		if id then
+			toggles[id] = record.proxy
+			options[id] = record.proxy
+		end
+
+		return record.proxy
+	end
+
+	function box:AddSlider(id, values)
+		values = values or {}
+		values.title = values.Text or values.title or id
+		values.minimum = values.Min or values.minimum or 0
+		values.maximum = values.Max or values.maximum or 100
+
+		local record = push('slider', id, values)
+
+		if id then
+			options[id] = record.proxy
+		end
+
+		return record.proxy
+	end
+
+	function box:AddRangeSlider(id, values)
+		values = values or {}
+		values.title = values.Text or values.title or id
+		values.minimum = values.Min or 0
+		values.maximum = values.Max or 100
+
+		if _type(values.Default) == 'table' then
+			values.Default = values.Default[1]
+		end
+
+		local record = push('slider', id, values)
+
+		if id then
+			options[id] = record.proxy
+		end
+
+		return record.proxy
+	end
+
+	function box:AddInput(id, values)
+		values = values or {}
+		values.title = values.Text or values.title or id
+		values.placeholder = values.Placeholder or values.placeholder or ''
+		values.height = values.height or 28
+		values.compact = true
+
+		local record = push('input', id, values)
+
+		if id then
+			options[id] = record.proxy
+		end
+
+		return record.proxy
+	end
+
+	function box:AddDropdown(id, values)
+		values = values or {}
+		values.title = values.Text or values.title or id
+		values.options = values.Values or values.options or {}
+		values.multi = values.Multi == true
+
+		local record = push('dropdown', id, values)
+
+		if id then
+			options[id] = record.proxy
+		end
+
+		return record.proxy
+	end
+
+	function box:AddKeybind(id, values)
+		values = values or {}
+		values.title = values.Text or values.title or id
+
+		local record = push('keybind', id, values)
+
+		if id then
+			options[id] = record.proxy
+		end
+
+		return record.proxy
+	end
+
+	function box:AddColorPicker(id, values)
+		values = values or {}
+		values.title = values.Text or values.title or id
+
+		local record = push('color', id, values)
+
+		if id then
+			options[id] = record.proxy
+		end
+
+		return record.proxy
+	end
+
+	function box:AddButton(values)
+		values = values or {}
+		values.title = values.Text or values.title or 'Button'
+		push('button', nil, values)
+
+		return box
+	end
+
+	function box:AddDivider()
+		push('divider', nil, {})
+
+		return box
+	end
+
+	function box:AddLabel(text)
+		push('label', nil, { title = text })
+
+		return box
+	end
+
+	function box:AddDependencyBox()
+		order += 1
+
+		local frame = create_new('Frame', {
+			BackgroundTransparency = 1,
+			LayoutOrder = order,
+			AutomaticSize = Enum.AutomaticSize.Y,
+			Size = _new_udim2(1, 0, 0, 0),
+			Visible = false,
+			Parent = group._frame,
+		})
+
+		create_list(frame, 8)
+
+		local dep_order = 0
+
+		local dep = {}
+
+		function dep:AddSlider(id, values)
+			values = values or {}
+			values.title = values.Text or values.title or id
+			values.minimum = values.Min or 0
+			values.maximum = values.Max or 100
+			dep_order += 1
+
+			local record = new_record(id, 'slider', values)
+			record.order = dep_order
+			record.control = build_control('slider', frame, dep_order, values, group._runtime)
+
+			if id then
+				options[id] = record.proxy
+			end
+
+			return record.proxy
+		end
+
+		function dep:SetupDependencies(list)
+			for _, dependency in list or {} do
+				local source = dependency[1]
+				local expected = dependency[2]
+
+				if source and source.OnChanged then
+					local function apply(value)
+						frame.Visible = value == expected
+					end
+
+					if source.Value ~= nil then
+						apply(source.Value)
+					end
+
+					source:OnChanged(apply)
+				end
+			end
+
+			return dep
+		end
+
+		return dep
+	end
+
+	_defer(function()
+		for _, item in queue do
+			local record = item.record
+
+			if record then
+				local user = item.values.callback
+
+				item.values.callback = function(value)
+					if user then
+						_pcall(user, value)
+					end
+
+					for _, handler in record.handlers do
+						_pcall(handler, value)
+					end
+				end
+			end
+
+			if item.id and not item.values.flag then
+				item.values.flag = item.id
+			end
+
+			local control = build_control(item.kind, group._frame, item.order, item.values, group._runtime)
+
+			if record then
+				record.control = control
+
+				if control and record.queued ~= nil then
+					write_value(control, item.kind, record.queued)
+				end
+
+				if control then
+					local value = read_value(control, item.kind)
+
+					for _, handler in record.handlers do
+						_pcall(handler, value)
+					end
+				end
+			end
+		end
+	end)
+
+	return box
+end
+
+local windows = {}
+
+function library:CreateWindow(settings)
+	settings = settings or {}
+
+	if #windows > 0 then
+		library:Unload()
+	end
+
+	local ui = library._new('default', { title = settings.Title })
+
+	if settings.MenuKey and settings.MenuKey.Name then
+		ui._flags.minimize_key = settings.MenuKey.Name
+	end
+	local window = { _ui = ui, Library = ui, _tabs = {} }
+
+	_insert(windows, ui)
+
+	function window:AddTab(name, icon)
+		if _type(icon) == 'string' and not string.find(icon, 'rbxassetid', 1, true) then
+			icon = nil
+		end
+
+		local tab = ui:create_tab(name, icon)
+
+		return {
+			AddLeftGroupbox = function(_, title)
+				return new_groupbox(tab, title, 'left')
+			end,
+			AddRightGroupbox = function(_, title)
+				return new_groupbox(tab, title, 'right')
+			end,
+		}
+	end
+
+	function window:CreateSettingsTab()
+		local tab = ui:create_tab('Settings', 'rbxassetid://10734941499')
+		ui:build_settings(tab)
+
+		return {
+			AddLeftGroupbox = function(_, title)
+				return new_groupbox(tab, title, 'left')
+			end,
+			AddRightGroupbox = function(_, title)
+				return new_groupbox(tab, title, 'right')
+			end,
+		}
+	end
+
+	function window:Notify(options)
+		if _type(options) == 'table' then
+			ui:notify(options.Content or options.Title or '')
+		else
+			ui:notify(options)
+		end
+	end
+
+	function window:SetTitle(text)
+		return ui:set_title(text)
+	end
+
+	function window:Unload()
+		ui:destroy()
+	end
+
+	return window
+end
+
+function library:Unload()
+	for _, ui in _pairs(windows) do
+		_pcall(function()
+			ui:destroy()
+		end)
+	end
+
+	_clear(windows)
+	_clear(toggles)
+	_clear(options)
 end
 
 
