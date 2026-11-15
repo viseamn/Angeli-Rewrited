@@ -388,6 +388,20 @@ library._new = function(runtime_type)
 	self:_init()
 	self:_init_keybinds()
 
+	self._dropdown_refresher = function()
+		for index = #self._dropdowns, 1, -1 do
+			local dropdown = self._dropdowns[index]
+
+			if not dropdown._box or not dropdown._box.Parent then
+				table.remove(self._dropdowns, index)
+			elseif dropdown._repaint then
+				_pcall(dropdown._repaint)
+			end
+		end
+	end
+
+	theme.on_apply(self._dropdown_refresher)
+
 	self:set_notify_position(self._notify_position, true)
 
 	if _type(state.themes) == 'table' then
@@ -1311,6 +1325,11 @@ function library:pulse_saved()
 end
 
 function library:destroy()
+	if self._dropdown_refresher then
+		theme.off_apply(self._dropdown_refresher)
+		self._dropdown_refresher = nil
+	end
+
 	for _, connection in _pairs(connections) do
 		_pcall(function()
 			connection:Disconnect()
@@ -2377,6 +2396,7 @@ end
 
 local function create_dropdown(parent, order, values, runtime)
 	local multi = values.multi == true
+	local compact = values.compact == true
 	local selected = {}
 	local current = nil
 	local options = {}
@@ -2413,23 +2433,26 @@ local function create_dropdown(parent, order, values, runtime)
 		Parent = parent,
 	})
 
-	create_list(container, 6)
+	create_list(container, compact and 0 or 6)
 
-	create_label({
-		LayoutOrder = 0,
-		Size = _new_udim2(1, 0, 0, 16),
-		Text = values.title or 'Dropdown',
-		TextSize = runtime._label_size,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		TextTruncate = Enum.TextTruncate.AtEnd,
-		Parent = container,
-	})
+	if not compact then
+		create_label({
+			LayoutOrder = 0,
+			Size = _new_udim2(1, 0, 0, 16),
+			Text = values.title or 'Dropdown',
+			TextSize = runtime._label_size,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextTruncate = Enum.TextTruncate.AtEnd,
+			Parent = container,
+		})
+	end
 
 	local box = create_new('Frame', {
-		LayoutOrder = 1,
+		LayoutOrder = compact and 0 or 1,
 		AutomaticSize = Enum.AutomaticSize.Y,
 		Size = _new_udim2(1, 0, 0, 0),
 		BorderSizePixel = 0,
+		BackgroundTransparency = compact and 1 or 0,
 		ClipsDescendants = true,
 		Parent = container,
 	})
@@ -2446,13 +2469,31 @@ local function create_dropdown(parent, order, values, runtime)
 	})
 
 	local header_label = create_label({
-		Position = _new_udim2(0, 10, 0, 0),
-		Size = _new_udim2(1, values.hide_icon and -20 or -32, 1, 0),
-		Text = '',
+		Position = _new_udim2(0, compact and 0 or 10, 0, 0),
+		Size = _new_udim2(1, compact and -78 or (values.hide_icon and -20 or -32), 1, 0),
+		Text = compact and _tostring(values.title or '') or '',
+		TextRole = compact and 'text_dim' or 'text',
 		TextSize = runtime._label_size,
 		TextXAlignment = Enum.TextXAlignment.Left,
+		TextTruncate = Enum.TextTruncate.AtEnd,
 		Parent = header,
 	})
+
+	local value_label = nil
+
+	if compact then
+		value_label = create_label({
+			AnchorPoint = _new_vector2(1, 0.5),
+			Position = _new_udim2(1, -18, 0.5, 0),
+			Size = _new_udim2(0, 92, 1, 0),
+			Text = '',
+			TextRole = 'text',
+			TextSize = runtime._label_size,
+			TextXAlignment = Enum.TextXAlignment.Right,
+			TextTruncate = Enum.TextTruncate.AtEnd,
+			Parent = header,
+		})
+	end
 
 	create_new('UIGradient', {
 		Transparency = NumberSequence.new({
@@ -2470,22 +2511,30 @@ local function create_dropdown(parent, order, values, runtime)
 		chevron = create_new('ImageLabel', {
 			BackgroundTransparency = 1,
 			AnchorPoint = _new_vector2(1, 0.5),
-			Position = _new_udim2(1, -10, 0.5, 0),
-			Size = _new_udim2(0, 12, 0, 12),
+			Position = _new_udim2(1, compact and -2 or -10, 0.5, 0),
+			Size = _new_udim2(0, compact and 10 or 12, 0, compact and 10 or 12),
 			Image = 'rbxassetid://10734899821',
 			Parent = header,
 		})
 		theme.paint(chevron, 'ImageColor3', 'text_dim')
 	end
 
-	local list = create_scroller(box, _new_udim2(0, 0, 0, 24), _new_udim2(1, 0, 0, 0))
+	local list = create_scroller(box, _new_udim2(0, 0, 0, compact and 26 or 24), _new_udim2(1, 0, 0, 0))
 	list.LayoutOrder = 1
 	create_list(list)
+
+	if compact then
+		theme.paint(list, 'BackgroundColor3', 'surface_alt')
+		list.BackgroundTransparency = 0
+		create_round(list, 6)
+		create_padding(list, 4, 4, 4, 4)
+	end
 
 	local dropdown = {
 		_open = open,
 		_locked = locked,
 		_options = options,
+		_box = box,
 	}
 
 	function dropdown:get_value()
@@ -2502,6 +2551,9 @@ local function create_dropdown(parent, order, values, runtime)
 	end
 
 	local function render_header()
+		local text
+		local role
+
 		if multi then
 			local names = {}
 			for option, state in _pairs(selected) do
@@ -2510,13 +2562,21 @@ local function create_dropdown(parent, order, values, runtime)
 				end
 			end
 			_sort(names)
-			header_label.Text = #names == 0 and (values.empty_text or 'None') or table.concat(names, ', ')
-			theme.paint(header_label, 'TextColor3', #names == 0 and 'text_dim' or 'text')
+			text = #names == 0 and (values.empty_text or 'None') or table.concat(names, ', ')
+			role = #names == 0 and 'text_dim' or 'text'
+		else
+			text = current and _tostring(current) or (values.empty_text or 'None')
+			role = current and 'text' or 'text_dim'
+		end
+
+		if compact and value_label then
+			value_label.Text = text
+			theme.paint(value_label, 'TextColor3', role)
 			return
 		end
 
-		header_label.Text = current and _tostring(current) or (values.empty_text or 'None')
-		theme.paint(header_label, 'TextColor3', current and 'text' or 'text_dim')
+		header_label.Text = text
+		theme.paint(header_label, 'TextColor3', role)
 	end
 
 	local function refresh_labels()
@@ -2709,6 +2769,12 @@ local function create_dropdown(parent, order, values, runtime)
 			Size = _new_udim2(1, 0, 0, target and list_height() or 0),
 		}):Play()
 
+		if chevron then
+			_create_tween(tween_service, chevron, _new_tween_info(0.25, Enum.EasingStyle.Quint), {
+				Rotation = target and 180 or 0,
+			}):Play()
+		end
+
 		if not target then
 			_delay(0.35, function()
 				if not dropdown._open then
@@ -2746,6 +2812,26 @@ local function create_dropdown(parent, order, values, runtime)
 	render_header()
 	refresh_labels()
 
+	dropdown._repaint = function()
+		theme.paint(box, 'BackgroundColor3', 'surface_alt')
+		theme.paint(header_label, 'TextColor3', compact and 'text_dim' or 'text')
+
+		if value_label then
+			theme.paint(value_label, 'TextColor3', 'text')
+		end
+
+		if chevron then
+			theme.paint(chevron, 'ImageColor3', 'text_dim')
+		end
+
+		if compact then
+			theme.paint(list, 'BackgroundColor3', 'surface_alt')
+		end
+
+		render_header()
+		refresh_labels()
+	end
+
 	_insert(runtime._dropdowns, dropdown)
 
 	if values.flag then
@@ -2759,6 +2845,9 @@ local function create_dropdown(parent, order, values, runtime)
 end
 
 local function create_button(parent, order, values, runtime)
+	local primary = values.primary == true
+	local base_role = primary and 'accent' or 'surface_alt'
+
 	local button = create_new('TextButton', {
 		BackgroundTransparency = 0,
 		LayoutOrder = order,
@@ -2773,14 +2862,14 @@ local function create_button(parent, order, values, runtime)
 		Parent = parent,
 	})
 
-	theme.paint(button, 'BackgroundColor3', 'surface_alt')
-	theme.paint(button, 'TextColor3', 'text')
+	theme.paint(button, 'BackgroundColor3', base_role)
+	theme.paint(button, 'TextColor3', primary and 'accent_text' or 'text')
 	create_round(button, 6)
 
 	button.MouseButton1Click:Connect(function()
 		button.BackgroundColor3 = theme.color('stroke')
 		_create_tween(tween_service, button, _new_tween_info(0.2), {
-			BackgroundColor3 = theme.color('surface_alt'),
+			BackgroundColor3 = theme.color(base_role),
 		}):Play()
 
 		if values.callback then
@@ -2989,362 +3078,6 @@ local function create_keybind(parent, order, values, runtime)
 	}
 end
 
-local function to_hex(color)
-	local r = _floor(color.R * 255 + 0.5)
-	local g = _floor(color.G * 255 + 0.5)
-	local b = _floor(color.B * 255 + 0.5)
-
-	return string.format('#%02X%02X%02X', r, g, b)
-end
-
-local function from_hex(text)
-	local r, g, b = string.match(_tostring(text or ''), '^#?(%x%x)(%x%x)(%x%x)$')
-
-	if not r then
-		return nil
-	end
-
-	return Color3.fromRGB(tonumber(r, 16), tonumber(g, 16), tonumber(b, 16))
-end
-
-local function create_colorpicker(parent, order, values, runtime)
-	local color = values.default or Color3.fromRGB(255, 255, 255)
-
-	if values.flag and _type(runtime._flags[values.flag]) == 'string' then
-		color = from_hex(runtime._flags[values.flag]) or color
-	end
-
-	local h, s, v = color:ToHSV()
-
-	local frame = create_new('Frame', {
-		BackgroundTransparency = 1,
-		LayoutOrder = order,
-		AutomaticSize = Enum.AutomaticSize.Y,
-		Size = _new_udim2(1, 0, 0, 26),
-		Parent = parent,
-	})
-
-	local header = create_new('Frame', {
-		BackgroundTransparency = 1,
-		Size = _new_udim2(1, 0, 0, 26),
-		Parent = frame,
-	})
-
-	create_label({
-		Size = _new_udim2(1, -40, 1, 0),
-		Text = values.title or 'Color',
-		TextSize = runtime._label_size,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		TextTruncate = Enum.TextTruncate.AtEnd,
-		Parent = header,
-	})
-
-	local swatch = create_new('TextButton', {
-		AnchorPoint = _new_vector2(1, 0.5),
-		Position = _new_udim2(1, 0, 0.5, 0),
-		Size = _new_udim2(0, 30, 0, 18),
-		Text = '',
-		AutoButtonColor = false,
-		BorderSizePixel = 0,
-		Parent = header,
-	})
-
-	create_round(swatch, 4)
-	create_outline(swatch)
-
-	local panel = create_new('Frame', {
-		BackgroundTransparency = 1,
-		Position = _new_udim2(0, 0, 0, 26),
-		Size = _new_udim2(1, 0, 0, 0),
-		ClipsDescendants = true,
-		Parent = frame,
-	})
-
-	local sv = create_new('Frame', {
-		Size = _new_udim2(1, 0, 0, 96),
-		BorderSizePixel = 0,
-		ClipsDescendants = true,
-		Parent = panel,
-	})
-
-	create_round(sv, 4)
-
-	local white_layer = create_new('Frame', {
-		Size = _new_udim2(1, 0, 1, 0),
-		BackgroundColor3 = Color3.fromRGB(255, 255, 255),
-		BorderSizePixel = 0,
-		Parent = sv,
-	})
-
-	create_new('UIGradient', {
-		Transparency = NumberSequence.new({
-			NumberSequenceKeypoint.new(0, 0),
-			NumberSequenceKeypoint.new(1, 1),
-		}),
-		Parent = white_layer,
-	})
-
-	local black_layer = create_new('Frame', {
-		Size = _new_udim2(1, 0, 1, 0),
-		BackgroundColor3 = Color3.fromRGB(0, 0, 0),
-		BorderSizePixel = 0,
-		Parent = sv,
-	})
-
-	create_new('UIGradient', {
-		Rotation = 90,
-		Transparency = NumberSequence.new({
-			NumberSequenceKeypoint.new(0, 1),
-			NumberSequenceKeypoint.new(1, 0),
-		}),
-		Parent = black_layer,
-	})
-
-	local sv_marker = create_new('Frame', {
-		AnchorPoint = _new_vector2(0.5, 0.5),
-		Size = _new_udim2(0, 10, 0, 10),
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-		Parent = sv,
-	})
-
-	create_pill(sv_marker)
-
-	create_new('UIStroke', {
-		Thickness = 2,
-		Color = Color3.fromRGB(255, 255, 255),
-		Parent = sv_marker,
-	})
-
-	local hue_bar = create_new('Frame', {
-		Position = _new_udim2(0, 0, 0, 104),
-		Size = _new_udim2(1, 0, 0, 10),
-		BorderSizePixel = 0,
-		ClipsDescendants = true,
-		Parent = panel,
-	})
-
-	create_pill(hue_bar)
-
-	local hue_fill = create_new('Frame', {
-		Size = _new_udim2(1, 0, 1, 0),
-		BorderSizePixel = 0,
-		Parent = hue_bar,
-	})
-
-	create_new('UIGradient', {
-		Color = ColorSequence.new({
-			ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 0, 0)),
-			ColorSequenceKeypoint.new(1 / 6, Color3.fromRGB(255, 255, 0)),
-			ColorSequenceKeypoint.new(2 / 6, Color3.fromRGB(0, 255, 0)),
-			ColorSequenceKeypoint.new(3 / 6, Color3.fromRGB(0, 255, 255)),
-			ColorSequenceKeypoint.new(4 / 6, Color3.fromRGB(0, 0, 255)),
-			ColorSequenceKeypoint.new(5 / 6, Color3.fromRGB(255, 0, 255)),
-			ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 0, 0)),
-		}),
-		Parent = hue_fill,
-	})
-
-	local hue_marker = create_new('Frame', {
-		AnchorPoint = _new_vector2(0.5, 0.5),
-		Position = _new_udim2(h, 0, 0.5, 0),
-		Size = _new_udim2(0, 3, 0, 16),
-		BorderSizePixel = 0,
-		Parent = hue_bar,
-	})
-
-	create_new('UIStroke', {
-		Thickness = 1,
-		Color = Color3.fromRGB(255, 255, 255),
-		Parent = hue_marker,
-	})
-
-	create_pill(hue_marker)
-
-	local hex_box = create_new('TextBox', {
-		Position = _new_udim2(0, 0, 0, 122),
-		Size = _new_udim2(1, 0, 0, 24),
-		ClearTextOnFocus = false,
-		FontFace = FONT,
-		PlaceholderText = '#FFFFFF',
-		Text = to_hex(color),
-		TextSize = runtime._label_size,
-		TextXAlignment = Enum.TextXAlignment.Center,
-		BorderSizePixel = 0,
-		Parent = panel,
-	})
-
-	theme.paint(hex_box, 'BackgroundColor3', 'surface_alt')
-	theme.paint(hex_box, 'TextColor3', 'text')
-	create_round(hex_box, 6)
-
-	local open = false
-	local dragging = nil
-	local syncing = false
-
-	local function apply(commit, silent, quiet)
-		color = Color3.fromHSV(h, s, v)
-
-		sv.BackgroundColor3 = Color3.fromHSV(h, 1, 1)
-		sv_marker.Position = _new_udim2(s, 0, 1 - v, 0)
-		hue_marker.Position = _new_udim2(h, 0, 0.5, 0)
-		swatch.BackgroundColor3 = color
-
-		syncing = true
-		hex_box.Text = to_hex(color)
-		syncing = false
-
-		if not commit then
-			return
-		end
-
-		if values.flag then
-			runtime._flags[values.flag] = to_hex(color)
-			if not silent then
-				library._save(runtime)
-			end
-		end
-
-		if values.callback and not quiet then
-			local ok, err = _pcall(values.callback, color)
-			if not ok then
-				warn(`[Angeli] colorpicker callback failed: {_tostring(err)}`)
-			end
-		end
-	end
-
-	local function set_color(next_color, commit, silent, quiet)
-		h, s, v = next_color:ToHSV()
-		apply(commit, silent, quiet)
-	end
-
-	local function toggle_panel(state)
-		local target = state
-		if target == nil then
-			target = not open
-		end
-		if target == open then
-			return
-		end
-
-		open = target
-
-		_create_tween(tween_service, panel, _new_tween_info(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
-			Size = _new_udim2(1, 0, 0, target and 150 or 0),
-		}):Play()
-	end
-
-	swatch.MouseButton1Click:Connect(function()
-		toggle_panel()
-	end)
-
-	local function drag_sv(input)
-		local size = sv.AbsoluteSize
-		if size.X <= 0 or size.Y <= 0 then
-			return
-		end
-
-		s = _clamp((input.Position.X - sv.AbsolutePosition.X) / size.X, 0, 1)
-		v = 1 - _clamp((input.Position.Y - sv.AbsolutePosition.Y) / size.Y, 0, 1)
-		apply(true)
-	end
-
-	local function drag_hue(input)
-		local size = hue_bar.AbsoluteSize
-		if size.X <= 0 then
-			return
-		end
-
-		h = _clamp((input.Position.X - hue_bar.AbsolutePosition.X) / size.X, 0, 1)
-		apply(true)
-	end
-
-	sv.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			dragging = 'sv'
-			drag_sv(input)
-		end
-	end)
-
-	hue_bar.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			dragging = 'hue'
-			drag_hue(input)
-		end
-	end)
-
-	watch(user_input_service.InputChanged, function(input)
-		if not dragging then
-			return
-		end
-
-		if input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch then
-			return
-		end
-
-		if dragging == 'sv' then
-			drag_sv(input)
-		else
-			drag_hue(input)
-		end
-	end)
-
-	watch(user_input_service.InputEnded, function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			dragging = nil
-		end
-	end)
-
-	hex_box.FocusLost:Connect(function()
-		if syncing then
-			return
-		end
-
-		local parsed = from_hex(hex_box.Text)
-
-		if parsed then
-			set_color(parsed, true)
-		else
-			hex_box.Text = to_hex(color)
-		end
-	end)
-
-	hex_box:GetPropertyChangedSignal('Text'):Connect(function()
-		if syncing then
-			return
-		end
-
-		local parsed = from_hex(hex_box.Text)
-		if parsed then
-			set_color(parsed, false)
-		end
-	end)
-
-	apply(false)
-
-	if values.flag then
-		library._bind(runtime, values.flag, function(value)
-			local parsed = from_hex(value)
-			if parsed then
-				set_color(parsed, false, true, true)
-			end
-		end)
-	end
-
-
-	return {
-		get = function()
-			return color
-		end,
-		set = function(next_color)
-			set_color(next_color, true)
-		end,
-		open = function()
-			toggle_panel(true)
-		end,
-	}
-end
-
 open_settings_panel = function(runtime, anchor, entries, title)
 	if runtime._settings_panel then
 		runtime._settings_panel:Destroy()
@@ -3361,7 +3094,7 @@ open_settings_panel = function(runtime, anchor, entries, title)
 		runtime._settings_backdrop = nil
 	end
 
-	local width = 184
+	local width = 190
 	local scale = runtime._ui_scale
 	local container = runtime._container
 	local container_pos = container.AbsolutePosition
@@ -3369,10 +3102,9 @@ open_settings_panel = function(runtime, anchor, entries, title)
 	local size = anchor.AbsoluteSize
 	local anchor_x = (origin.X - container_pos.X) / scale
 	local anchor_y = (origin.Y - container_pos.Y) / scale
-	local anchor_w = size.X / scale
-	local anchor_h = size.Y / scale
-	local x = _clamp(anchor_x + anchor_w - width, SIDEBAR_WIDTH + 8, WINDOW_WIDTH - width - 8)
-	local y = anchor_y + anchor_h + 2
+	local right = _clamp(anchor_x + size.X / scale, SIDEBAR_WIDTH + 10 + width, WINDOW_WIDTH - 10)
+	local x = right - width
+	local y = anchor_y + size.Y / scale + 4
 
 	local backdrop = create_new('TextButton', {
 		BackgroundColor3 = Color3.fromRGB(0, 0, 0),
@@ -3386,24 +3118,25 @@ open_settings_panel = function(runtime, anchor, entries, title)
 	})
 
 	_create_tween(tween_service, backdrop, _new_tween_info(0.18), {
-		BackgroundTransparency = 0.45,
+		BackgroundTransparency = 0.5,
 	}):Play()
 
 	local shadow = create_new('Frame', {
-		Position = _new_udim2(0, x + 2, 0, y + 4),
+		Position = _new_udim2(0, x, 0, y + 6),
 		Size = _new_udim2(0, width, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		BackgroundColor3 = Color3.fromRGB(0, 0, 0),
-		BackgroundTransparency = 0.55,
+		BackgroundTransparency = 0.6,
 		BorderSizePixel = 0,
 		ZIndex = 499,
 		Parent = container,
 	})
 
-	create_round(shadow, 8)
+	create_round(shadow, 12)
 
 	local panel = create_new('Frame', {
-		Position = _new_udim2(0, x, 0, y + 6),
+		AnchorPoint = _new_vector2(1, 0),
+		Position = _new_udim2(0, right, 0, y + 4),
 		Size = _new_udim2(0, width, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		BorderSizePixel = 0,
@@ -3411,27 +3144,46 @@ open_settings_panel = function(runtime, anchor, entries, title)
 		Parent = container,
 	})
 
-	_create_tween(tween_service, panel, _new_tween_info(0.2, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
-		Position = _new_udim2(0, x, 0, y),
+	theme.paint(panel, 'BackgroundColor3', 'surface')
+	create_round(panel, 10)
+	create_outline(panel)
+	create_padding(panel, 10, 10, 12, 12)
+	create_list(panel, 8)
+
+	local pop = create_new('UIScale', {
+		Scale = 0.94,
+		Parent = panel,
+	})
+
+	_create_tween(tween_service, pop, _new_tween_info(0.2, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+		Scale = 1,
 	}):Play()
 
-	theme.paint(panel, 'BackgroundColor3', 'surface')
-	create_round(panel, 8)
-	create_outline(panel)
-	create_padding(panel, 8, 8, 10, 10)
-	create_list(panel, 6)
+	_create_tween(tween_service, panel, _new_tween_info(0.2, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+		Position = _new_udim2(0, right, 0, y),
+	}):Play()
 
 	create_label({
 		LayoutOrder = 0,
 		Size = _new_udim2(1, 0, 0, 12),
 		Text = string.upper(_tostring(title or 'Settings')),
 		TextRole = 'text_dim',
-		TextSize = runtime._small_size,
+		TextSize = runtime._small_size - 1,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextTruncate = Enum.TextTruncate.AtEnd,
 		ZIndex = 501,
 		Parent = panel,
 	})
+
+	local divider = create_new('Frame', {
+		LayoutOrder = 1,
+		Size = _new_udim2(1, 0, 0, 1),
+		BorderSizePixel = 0,
+		ZIndex = 501,
+		Parent = panel,
+	})
+
+	theme.paint(divider, 'BackgroundColor3', 'stroke')
 
 	local closing = false
 
@@ -3442,15 +3194,23 @@ open_settings_panel = function(runtime, anchor, entries, title)
 
 		closing = true
 
-		_create_tween(tween_service, panel, _new_tween_info(0.16, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
-			Position = _new_udim2(0, x, 0, y + 6),
+		_create_tween(tween_service, pop, _new_tween_info(0.14, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
+			Scale = 0.95,
 		}):Play()
 
-		_create_tween(tween_service, backdrop, _new_tween_info(0.16), {
+		_create_tween(tween_service, panel, _new_tween_info(0.14, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
+			Position = _new_udim2(0, right, 0, y + 4),
+		}):Play()
+
+		_create_tween(tween_service, shadow, _new_tween_info(0.14), {
 			BackgroundTransparency = 1,
 		}):Play()
 
-		_delay(0.18, function()
+		_create_tween(tween_service, backdrop, _new_tween_info(0.14), {
+			BackgroundTransparency = 1,
+		}):Play()
+
+		_delay(0.16, function()
 			if panel.Parent then
 				panel:Destroy()
 			end
@@ -3483,7 +3243,7 @@ open_settings_panel = function(runtime, anchor, entries, title)
 		button = create_button,
 	}
 
-	local order = 1
+	local order = 2
 
 	for _, entry in entries do
 		local builder = builders[entry.type] or create_button
@@ -3494,6 +3254,7 @@ open_settings_panel = function(runtime, anchor, entries, title)
 		values.keybind = nil
 		values.settings = nil
 		values.notify = nil
+		values.primary = entry.primary == true
 
 		if entry.type == 'switch' then
 			values.default = entry.value == true
@@ -3504,6 +3265,7 @@ open_settings_panel = function(runtime, anchor, entries, title)
 		elseif entry.type == 'dropdown' then
 			values.default = entry.value
 			values.options = entry.options or {}
+			values.compact = true
 		elseif entry.type == 'button' then
 			local original = entry.callback
 
@@ -3576,16 +3338,6 @@ function group_methods:create_textbox(flag, values)
 	values = values or {}
 	values.flag = flag
 	return create_textbox(self._frame, self:_next_order(), values, self._runtime)
-end
-
-function group_methods:create_colorpicker(flag, values)
-	if _type(flag) == 'table' then
-		values = flag
-		flag = values.flag
-	end
-	values = values or {}
-	values.flag = flag
-	return create_colorpicker(self._frame, self:_next_order(), values, self._runtime)
 end
 
 function group_methods:create_keybind(flag, values)
