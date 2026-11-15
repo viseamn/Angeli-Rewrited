@@ -1926,6 +1926,8 @@ local function open_color_popover(runtime, anchor, initial, on_change, on_close)
 		Parent = sv,
 	})
 
+	create_round(white_layer, 6)
+
 	create_new('UIGradient', {
 		Transparency = NumberSequence.new({
 			NumberSequenceKeypoint.new(0, 0),
@@ -1941,6 +1943,8 @@ local function open_color_popover(runtime, anchor, initial, on_change, on_close)
 		ZIndex = 502,
 		Parent = sv,
 	})
+
+	create_round(black_layer, 6)
 
 	create_new('UIGradient', {
 		Rotation = 90,
@@ -1985,6 +1989,8 @@ local function open_color_popover(runtime, anchor, initial, on_change, on_close)
 		ZIndex = 501,
 		Parent = hue_bar,
 	})
+
+	create_pill(hue_fill)
 
 	create_new('UIGradient', {
 		Color = ColorSequence.new({
@@ -2366,8 +2372,6 @@ local function create_switch(parent, order, values, runtime)
 		end
 	end
 
-	local gear_pill = nil
-
 	if values.settings then
 		gear = icon_button(icon_right - (values.notify and 20 or 0))
 		paint_gear = build_icon(gear, 'settings', 15)
@@ -2375,18 +2379,6 @@ local function create_switch(parent, order, values, runtime)
 		if not paint_gear then
 			gear:Destroy()
 			gear = nil
-		else
-			gear_pill = create_new('Frame', {
-				Position = _new_udim2(0, -3, 0, -3),
-				Size = _new_udim2(1, 6, 1, 6),
-				BackgroundTransparency = 1,
-				BorderSizePixel = 0,
-				ZIndex = 5,
-				Parent = gear,
-			})
-
-			create_round(gear_pill, 6)
-			paint(gear_pill, 'BackgroundColor3', 'accent')
 		end
 	end
 
@@ -2403,10 +2395,6 @@ local function create_switch(parent, order, values, runtime)
 			else
 				paint_gear(hovered and 'text' or 'text_dim')
 			end
-		end
-
-		if gear_pill then
-			gear_pill.BackgroundTransparency = gear_open and 0.82 or 1
 		end
 	end
 
